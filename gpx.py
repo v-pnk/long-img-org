@@ -40,9 +40,8 @@ def load_gpx_file(gpx_file: str):
         time_str_crop = time_str[:19]  # crop the subsecond part and Z
         time = datetime.datetime.strptime(time_str_crop, "%Y-%m-%dT%H:%M:%S")
         if len(time_str) > 20:
-            # add the microseconds
+            # Add the microseconds
             time = time.replace(microsecond=1000 * int(time_str[20:23]))
-            print("adding_microseconds: " + time_str[20:23])
 
         timestamps = np.append(timestamps, time)
         coords_wgs84 = np.append(coords_wgs84, np.array([[lat], [lon], [alt]]), axis=1)
@@ -82,20 +81,21 @@ def gpx_interpolate(timestamps, coords_wgs84, capture_time, mode="nearest"):
         else:
             raise ValueError("The capture time is outside the GPX time range.")
 
+    nearest_index = np.argmin(np.abs(timestamps - capture_time_utc))
+
     if mode in ["nearest", "nearest_outside"]:
-        nearest_index = np.argmin(np.abs(timestamps - capture_time_utc))
         return coords_wgs84[nearest_index]
     elif mode in ["linear", "linear_outside"]:
         if timestamps[nearest_index] < capture_time_utc:
             t1 = timestamps[nearest_index]
             t2 = timestamps[nearest_index + 1]
-            c1 = coords_wgs84[nearest_index]
-            c2 = coords_wgs84[nearest_index + 1]
+            c1 = coords_wgs84[:, nearest_index]
+            c2 = coords_wgs84[:, nearest_index + 1]
         else:
             t1 = timestamps[nearest_index - 1]
             t2 = timestamps[nearest_index]
-            c1 = coords_wgs84[nearest_index - 1]
-            c2 = coords_wgs84[nearest_index]
+            c1 = coords_wgs84[:, nearest_index - 1]
+            c2 = coords_wgs84[:, nearest_index]
 
         dt = (capture_time_utc - t1) / (t2 - t1)
         return c1 + dt * (c2 - c1)

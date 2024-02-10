@@ -72,6 +72,31 @@ def exif_to_time(exif_tags: dict):
     return full_datetime
 
 
+def time_to_exif(full_datetime: datetime.datetime):
+    """Convert the full date and time to EXIF tags.
+
+    Parameters:
+    full_datetime (datetime): The full date and time of the image capture.
+
+    Returns:
+    exif_tags (dict): The EXIF date and time tags.
+
+    """
+
+    capture_datetime = full_datetime.strftime("%Y:%m:%d %H:%M:%S")
+    capture_millisecond = full_datetime.strftime("%f")[:3]
+    capture_tz_offset = full_datetime.strftime("%z")
+    capture_tz_offset = capture_tz_offset[:3] + ":" + capture_tz_offset[3:]
+
+    exif_tags = {
+        "EXIF:DateTimeOriginal": capture_datetime,
+        "EXIF:SubSecTimeOriginal": capture_millisecond,
+        "EXIF:OffsetTimeOriginal": capture_tz_offset,
+    }
+
+    return exif_tags
+
+
 def exif_to_WGS84(exif_tags: dict):
     """Get the GNSS coordinates from the EXIF tags.
 
@@ -108,3 +133,50 @@ def exif_to_WGS84(exif_tags: dict):
         alt = 0.0
 
     return np.array([[lat], [lon], [alt]])
+
+def WGS84_to_exif(coords: np.ndarray):
+    """Convert GNSS coordinates to EXIF tags.
+
+    Parameters:
+    coords (np.ndarray): The GNSS coordinates with size (2,) or (3,).
+
+    Returns:
+    exif_tags (dict): The EXIF GPS-related tags.
+
+    """
+
+    coords = coords.flatten()
+
+    lat = coords[0]
+    lon = coords[1]
+
+    lat_ref = "N"
+    lon_ref = "E"
+
+    if lat < 0:
+        lat_ref = "S"
+        lat = -lat
+
+    if lon < 0:
+        lon_ref = "W"
+        lon = -lon
+
+    exif_tags = {
+        "EXIF:GPSLatitude": lat,
+        "EXIF:GPSLatitudeRef": lat_ref,
+        "EXIF:GPSLongitude": lon,
+        "EXIF:GPSLongitudeRef": lon_ref,
+    }
+
+    if coords.shape[0] == 2:
+        alt = coords[2]
+        alt_ref = 0
+
+        if alt < 0:
+            alt_ref = 1
+            alt = -alt
+        
+        exif_tags["EXIF:GPSAltitude"] = alt
+        exif_tags["EXIF:GPSAltitudeRef"] = alt_ref
+
+    return exif_tags

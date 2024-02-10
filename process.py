@@ -175,17 +175,25 @@ def main(args):
 
     # Load the GPX file
     if args.gpx_file:
-        print("- load GPX file: {}".format(args.gpx_file))
-        timestamps, coords_wgs84 = gpx.load_gpx_file(args.gpx_file)
+        with exiftool.ExifToolHelper() as et:
+            print("- load GPX file: {}".format(args.gpx_file))
+            timestamps, coords_wgs84 = gpx.load_gpx_file(args.gpx_file)
 
-        for image_name in image_data:
-            if image_data[image_name]["coords_wgs84"] is None:
-                image_data[image_name]["coords_wgs84"] = gpx.gpx_interpolate(
-                    timestamps,
-                    coords_wgs84,
-                    image_data[image_name]["capture_time"],
-                    args.gpx_mode,
-                )
+            for image_name in image_data:
+                if image_data[image_name]["coords_wgs84"] is None:
+                    image_data[image_name]["coords_wgs84"] = gpx.gpx_interpolate(
+                        timestamps,
+                        coords_wgs84,
+                        image_data[image_name]["capture_time"],
+                        args.gpx_mode,
+                    )
+                    et.set_tags(
+                        image_data[image_name]["new_path"],
+                        exif.WGS84_to_exif(
+                            image_data[image_name]["coords_wgs84"]
+                        ),
+                        params=["-overwrite_original"],
+                    )
 
     # Load the videos and extract the frames
     for video_path in video_paths:
