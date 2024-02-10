@@ -46,15 +46,21 @@ parser.add_argument(
     default="nearest",
     help="GPX interpolation mode. The \"nearest\" and \"linear\" raise an error if the time is outside the GPX time range.",
 )
-# parser.add_argument(
-#     "--res_ratio",
-#     type=float,
-#     default=1.0,
-#     help="Resolution ratio used for downsampling the frames - can be in (0.0 - 1.0) range."
-# )
+parser.add_argument(
+    "--res_ratio",
+    type=float,
+    default=1.0,
+    help="Resolution ratio used for downsampling the frames - can be in (0.0 - 1.0) range."
+)
+
+parser.add_argument(
+    "--verbose",
+    action="store_true",
+    help="Print notes on the progress."
+)
 
 
-def process_video(video_path, frame_dir, frame_rate, gpx_file=None, gpx_mode="nearest", verbose=False):
+def process_video(video_path, frame_dir, frame_rate, gpx_file=None, gpx_mode="nearest", res_ratio=1.0, verbose=False):
     """
     Process a video file. Extract frames with valid metadata and optionally
     add GPS data to the frames.
@@ -67,10 +73,19 @@ def process_video(video_path, frame_dir, frame_rate, gpx_file=None, gpx_mode="ne
 
     """
 
+    if verbose:
+        print(f"- processing video: {video_path}")
+        print(f"- loading video metadata")
     metadata = get_metadata(video_path)
-    frames = extract_frames(video_path, metadata["start_time"], frame_rate)
+
+    if verbose:
+        print(f"- extracting frames from the video")
+    frames = extract_frames(video_path, metadata["start_time"], frame_rate, res_ratio)
 
     if gpx_file is not None:
+        if verbose:
+            print(f"- loading GPS data from: {gpx_file}")
+
         timestamps, coords_wgs84 = gpx.load_gpx_file(gpx_file)
         for frame in frames:
             frame["coords_wgs84"] = gpx.gpx_interpolate(
@@ -79,6 +94,9 @@ def process_video(video_path, frame_dir, frame_rate, gpx_file=None, gpx_mode="ne
             frame["sensor_name"] = metadata["sensor_name"]
 
     image_data = {}
+
+    if verbose:
+        print(f"- saving frames to: {frame_dir}")
 
     with exiftool.ExifToolHelper() as et:
         for frame in frames:
@@ -90,8 +108,8 @@ def process_video(video_path, frame_dir, frame_rate, gpx_file=None, gpx_mode="ne
             exif_tags = {
                     "XResolution": metadata["x_resolution"],
                     "YResolution": metadata["y_resolution"],
-                    "ImageWidth": metadata["width"],
-                    "ImageHeight": metadata["height"],
+                    "ImageWidth": round(metadata["width"] * res_ratio),
+                    "ImageHeight": round(metadata["height"] * res_ratio),
                 }
             exif_tags.update(exif.time_to_exif(frame["capture_time"]))
             if frame["coords_wgs84"] is not None:
@@ -104,7 +122,7 @@ def process_video(video_path, frame_dir, frame_rate, gpx_file=None, gpx_mode="ne
     return image_data
 
 
-def extract_frames(video_path, start_time, frame_rate=1):
+def extract_frames(video_path, start_time, frame_rate=1, res_ratio=1.0):
     """
     Extract frames with valid capture times from a video file.
 
@@ -133,6 +151,13 @@ def extract_frames(video_path, start_time, frame_rate=1):
 
         if abs(this_time - ideal_capture_time) < abs(next_time - ideal_capture_time):
             data = {}
+
+            # Downsample the frame
+            if res_ratio < 1.0:
+                frame = cv2.resize(
+                    frame, (0, 0), fx=res_ratio, fy=res_ratio, interpolation=cv2.INTER_AREA
+                )
+
             data["image"] = frame
             data["capture_time"] = start_time + datetime.timedelta(seconds=this_time)
             frames.append(data)
@@ -208,11 +233,16 @@ def get_metadata(video_path):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    if args.res_ratio < 0.0 or args.res_ratio > 1.0:
+        raise ValueError("The resolution ratio must be in the (0.0 - 1.0) range.")
+
     process_video(
         args.video, 
         args.output, 
         args.frame_rate, 
         args.gpx_file, 
         args.gpx_mode, 
+        args.res_ratio,
         verbose=True
     )
