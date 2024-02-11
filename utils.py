@@ -7,6 +7,8 @@ category.
 import datetime
 import yaml
 import numpy as np
+import cv2
+import exiftool
 
 
 def time_to_name(full_datetime: datetime):
@@ -147,3 +149,45 @@ def save_metadata(metadata_file, metadata):
 
     with open(metadata_file, "wt") as f:
         yaml.dump(metadata, f)
+
+
+def copy_resize_image(source_path, target_path, ratio):
+    """Copy the image from the source to the target, resize it, save it to the
+    target path, and transfer the EXIF data.
+
+    Parameters:
+    source_path (str): The source image file.
+    target_path (str): The target image file.
+    ratio (float): The resize ratio for downsampling.
+
+    """
+
+    image = cv2.imread(source_path)
+
+    # Downsample the frame
+    if ratio < 1.0:
+        image = cv2.resize(
+            image, (0, 0), fx=ratio, fy=ratio, interpolation=cv2.INTER_AREA
+        )
+
+    cv2.imwrite(target_path, image)
+
+    # Transfer the EXIF data
+    with exiftool.ExifToolHelper() as et:
+        exif_tags = et.get_metadata(source_path)[0]
+
+        # Copy only valid tag groups
+        # - skip "File:" group, which is created automatically
+        new_tags_keys = [t for t in exif_tags.keys() if t.startswith(("EXIF:", "MakerNotes:"))]
+        new_tags = dict((k, exif_tags[k]) for k in new_tags_keys)
+
+        # Fix the image size in the EXIF data
+        new_tags["EXIF:ImageWidth"] =  round(
+            exif_tags["EXIF:ImageWidth"] * ratio)
+        new_tags["EXIF:ImageHeight"] =  round(
+            exif_tags["EXIF:ImageHeight"] * ratio)
+        
+        new_tags["EXIF:ExifImageWidth"] = new_tags["EXIF:ImageWidth"]
+        new_tags["EXIF:ExifImageHeight"] = new_tags["EXIF:ImageHeight"]
+        
+        et.set_tags(target_path, new_tags, params=["-overwrite_original"])

@@ -65,17 +65,17 @@ parser.add_argument(
 parser.add_argument(
     "--seq_max_td",
     type=float,
-    default=30.0,
+    default=300.0,
     help="The maximum time difference between two subsequent images in seconds to consider them as part of the same sequence.",
 )
 parser.add_argument(
     "--seq_max_dist",
     type=float,
-    default=30.0,
+    default=50.0,
     help="The maximum distance for two images in meters to consider them as part of the same sequence.",
 )
 parser.add_argument(
-    "--gpx_file", 
+    "--gpx_file",
     type=str, 
     help="The GPX file with the GPS data.",
 )
@@ -92,10 +92,22 @@ parser.add_argument(
     default=2.0,
     help="The frame rate for the video frame extraction.",
 )
+parser.add_argument(
+    "--image_res_ratio",
+    type=float,
+    default=1.0,
+    help="The resolution ratio used for downsampling images - can be in (0.0 - 1.0) range.",
+)
+parser.add_argument(
+    "--video_res_ratio",
+    type=float,
+    default=1.0,
+    help="The resolution ratio used for downsampling video frames - can be in (0.0 - 1.0) range.",
+)
 
 
 img_exts = (".jpg", ".jpeg", ".png")
-video_exts = ".mp4"
+video_exts = (".mp4")
 
 
 def main(args):
@@ -135,11 +147,16 @@ def main(args):
             image_data[image_name]["exif_tags"] = exif_tags
 
             # Get the sensor name
-            sensor_name, sensor_info = exif.exif_to_sensor_info(exif_tags)
+            sensor_name, sensor_info = exif.exif_to_sensor_info(
+                exif_tags, args.image_res_ratio
+            )
             if sensor_name not in sensor_list:
                 sensor_list[sensor_name] = sensor_info
                 print("- add new sensor {} to the sensor list".format(sensor_name))
             image_data[image_name]["sensor_name"] = sensor_name
+
+            image_data[image_name]["orig_width"] = exif_tags["EXIF:ImageWidth"]
+            image_data[image_name]["orig_height"] = exif_tags["EXIF:ImageHeight"]
 
             # Get the capture time
             image_data[image_name]["capture_time"] = exif.exif_to_time(exif_tags)
@@ -167,7 +184,9 @@ def main(args):
         image_data[image_name]["new_path"] = new_image_path
 
         os.makedirs(sensor_dir, exist_ok=True)
-        shutil.copy(orig_image_path, new_image_path)
+        utils.copy_resize_image(
+            orig_image_path, new_image_path, args.image_res_ratio
+        )
 
         image_data_org[image_data[image_name]["new_name"]] = image_data[image_name]
 
@@ -206,7 +225,12 @@ def main(args):
         os.makedirs(sensor_dir, exist_ok=True)
 
         frame_data = video.process_video(
-            video_path, sensor_dir, args.video_fps, args.gpx_file, args.gpx_mode
+            video_path,
+            sensor_dir,
+            args.video_fps,
+            args.gpx_file,
+            args.gpx_mode,
+            args.video_res_ratio,
         )
 
         image_data.update(frame_data)
@@ -338,6 +362,12 @@ def main(args):
                     seq["images"][image_path]["coords_wgs84"] = image_data[image_path][
                         "coords_wgs84"
                     ]
+                    seq["images"][image_path]["orig_width"] = image_data[image_path][
+                        "orig_width"
+                    ]
+                    seq["images"][image_path]["orig_height"] = image_data[image_path][
+                        "orig_height"
+                    ]
                     seq["images"][image_path]["tag_location"] = image_data[image_path][
                         "tag_location"
                     ]
@@ -369,4 +399,15 @@ def main(args):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    if args.image_res_ratio < 0.0 or args.image_res_ratio > 1.0:
+        raise ValueError(
+            "The resolution ratio must be in the (0.0 - 1.0) range."
+            )
+    
+    if args.video_res_ratio < 0.0 or args.video_res_ratio > 1.0:
+        raise ValueError(
+            "The resolution ratio must be in the (0.0 - 1.0) range."
+            )
+
     main(args)

@@ -52,7 +52,6 @@ parser.add_argument(
     default=1.0,
     help="Resolution ratio used for downsampling the frames - can be in (0.0 - 1.0) range."
 )
-
 parser.add_argument(
     "--verbose",
     action="store_true",
@@ -154,12 +153,15 @@ def extract_frames(video_path, start_time, frame_rate=1, res_ratio=1.0):
 
             # Downsample the frame
             if res_ratio < 1.0:
-                frame = cv2.resize(
+                frame_resized = cv2.resize(
                     frame, (0, 0), fx=res_ratio, fy=res_ratio, interpolation=cv2.INTER_AREA
                 )
 
-            data["image"] = frame
+            data["image"] = frame_resized
             data["capture_time"] = start_time + datetime.timedelta(seconds=this_time)
+            data["orig_width"] = frame.shape[1]
+            data["orig_height"] = frame.shape[0]
+            
             frames.append(data)
             ideal_capture_time += 1.0 / frame_rate
 

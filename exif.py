@@ -7,7 +7,7 @@ import datetime
 import numpy as np
 
 
-def exif_to_sensor_info(exif_tags: dict):
+def exif_to_sensor_info(exif_tags: dict, ratio: float):
     """Get sensor information from the EXIF data. Compose also the sensor name
     in the following format:
     <camera_model>_<focal_length>mm_<resolution_x>x<resolution_y>_<data_type>
@@ -16,6 +16,7 @@ def exif_to_sensor_info(exif_tags: dict):
 
     Parameters:
     exif_tags (dict): The loaded EXIF tags from an image.
+    ratio (float): The resize ratio for image downsampling.
 
     Returns:
     sensor_name (str): The sensor name.
@@ -25,19 +26,19 @@ def exif_to_sensor_info(exif_tags: dict):
 
     device = exif_tags["EXIF:Model"]
     focal_length = exif_tags["EXIF:FocalLength"]
-    resolution_x = exif_tags["EXIF:ImageWidth"]
-    resolution_y = exif_tags["EXIF:ImageHeight"]
+    image_width = round(exif_tags["EXIF:ImageWidth"] * ratio)
+    image_height = round(exif_tags["EXIF:ImageHeight"] * ratio)
     data_type = "RGB"
 
     sensor_name = "{}_{}mm_{}x{}_{}".format(
-        device, focal_length, resolution_x, resolution_y, data_type
+        device, focal_length, image_width, image_height, data_type
     )
 
     sensor_info = {
         "device": device,
         "focal_length": focal_length,
-        "resolution_x": resolution_x,
-        "resolution_y": resolution_y,
+        "image_width": image_width,
+        "image_height": image_height,
         "data_type": data_type,
     }
 
