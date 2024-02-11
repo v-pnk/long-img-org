@@ -78,7 +78,7 @@ python3 process.py --help
 - Video files cannot directly contain a location in their metadata, so the locations for the extracted frames are interpolated from a GPX track file and saved in the frame EXIF.
 
 ## TODO
-- [ ] image resizing
+- [x] image resizing
 - [ ] automatic weather tagging
 - [ ] global image database
 - [ ] image retrieval based on locations, tags, sequences, etc.
