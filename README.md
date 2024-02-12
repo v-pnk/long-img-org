@@ -79,6 +79,6 @@ python3 process.py --help
 
 ## TODO
 - [x] image resizing
-- [ ] automatic weather tagging
-- [ ] global image database
+- [x] global image database
 - [ ] image retrieval based on locations, tags, sequences, etc.
+- [ ] automatic weather tagging

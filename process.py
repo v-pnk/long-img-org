@@ -60,7 +60,17 @@ parser.add_argument(
 parser.add_argument(
     "--new_sensor_file",
     type=str,
-    help="The YAML file with the sensor list updated based on the new images.",
+    help="The YAML file with the sensor list which will be updated based on the new images. The default is <dataset>/sensors.yaml.",
+)
+parser.add_argument(
+    "--image_database_file",
+    type=str,
+    help="The CSV file with database of all dataset images. The default is <dataset>/image_database.csv.",
+)
+parser.add_argument(
+    "--new_image_database_file",
+    type=str,
+    help="The CSV file with database of all dataset images which will be updated based on the new images. The default is <dataset>/image_database.csv.",
 )
 parser.add_argument(
     "--seq_max_td",
@@ -122,6 +132,16 @@ def main(args):
     else:
         sensor_list = {}
 
+    # Load the image relative paths from the existing image database
+    if not args.image_database_file:
+        args.image_database_file = os.path.join(args.dataset, "image_database.csv")
+
+    if os.path.exists(args.image_database_file):
+        print("- load image list from the given image database: {}".format(args.image_database_file))
+        image_database_relpaths = utils.load_image_database_relpaths(args.image_database_file)
+    else:
+        image_database_relpaths = []
+
     # Get the list of image and video paths
     image_paths = []
     video_paths = []
@@ -181,12 +201,23 @@ def main(args):
 
         orig_image_path = image_data[image_name]["orig_path"]
         new_image_path = os.path.join(sensor_dir, image_data[image_name]["new_name"])
+        new_image_relpath = os.path.relpath(new_image_path, args.dataset)
+
+        if new_image_relpath in image_database_relpaths:
+            print("  - skip already processed image: {}".format(new_image_relpath))
+            continue
+
         image_data[image_name]["new_path"] = new_image_path
 
         os.makedirs(sensor_dir, exist_ok=True)
-        utils.copy_resize_image(
-            orig_image_path, new_image_path, args.image_res_ratio
-        )
+        
+        if args.image_res_ratio == 1.0:
+            # Just copy the image if not resizing to speed up the process
+            shutil.copy2(orig_image_path, new_image_path)
+        else:
+            utils.copy_resize_image(
+                orig_image_path, new_image_path, args.image_res_ratio
+            )
 
         image_data_org[image_data[image_name]["new_name"]] = image_data[image_name]
 
@@ -290,6 +321,7 @@ def main(args):
             # Divide the images into sequences
             seq = {}
             seq_id = metadata["seq_id"] + 1
+            seq_name = "seq-{:0>3d}".format(seq_id)
             seq["images"] = {}
             seq["coordinates"] = np.empty((3, 0))
 
@@ -301,6 +333,7 @@ def main(args):
                 # Initialize new sequence
                 if len(seq["images"]) == 0:
                     seq["images"][os.path.basename(sensor_image_names[i])] = {}
+                    image_data[sensor_image_names[i]]["sequence"] = seq_name
                     seq["coordinates"] = np.append(
                         seq["coordinates"],
                         image_data[sensor_image_names[i]]["coords_wgs84"],
@@ -328,6 +361,7 @@ def main(args):
 
                 if time_diff <= args.seq_max_td and space_dist <= args.seq_max_dist:
                     seq["images"][os.path.basename(sensor_image_names[i])] = {}
+                    image_data[sensor_image_names[i]]["sequence"] = seq_name
                     seq["coordinates"] = np.append(
                         seq["coordinates"],
                         image_data[sensor_image_names[i]]["coords_wgs84"],
@@ -335,12 +369,13 @@ def main(args):
                     )
                 else:
                     del seq["coordinates"]
-                    seq_name = "seq-{:0>3d}".format(seq_id)
                     metadata["sequences"][seq_name] = seq
 
                     seq = {}
                     seq_id += 1
+                    seq_name = "seq-{:0>3d}".format(seq_id)
                     seq["images"] = {os.path.basename(sensor_image_names[i]): {}}
+                    image_data[sensor_image_names[i]]["sequence"] = seq_name
                     seq["coordinates"] = np.array(
                         image_data[sensor_image_names[i]]["coords_wgs84"]
                     )
@@ -350,7 +385,6 @@ def main(args):
             del seq["coordinates"]
 
             if len(seq["images"]) > 0:
-                seq_name = "seq-{:0>3d}".format(seq_id)
                 metadata["sequences"][seq_name] = seq
 
             # Add metadata to each image in the sequence
@@ -374,6 +408,7 @@ def main(args):
                     seq["images"][image_path]["tag_daytime"] = image_data[image_path][
                         "tag_daytime"
                     ]
+
                     # TODO: Add weather tag
 
                 # Tag the sequences based on the tags of the images
@@ -395,6 +430,12 @@ def main(args):
     else:
         with open(args.sensor_file, "wt") as f:
             yaml.dump(sensor_list, f)
+    
+    # Save the image database
+    if args.new_image_database_file:
+        utils.save_image_database(args.new_image_database_file, image_data)
+    else:
+        utils.save_image_database(args.image_database_file, image_data)
 
 
 if __name__ == "__main__":
