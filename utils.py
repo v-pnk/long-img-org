@@ -199,6 +199,19 @@ def copy_resize_image(source_path, target_path, ratio):
 
 
 def load_image_database(image_database_file):
+    """Load image database from the a file. The database contains for each 
+    image its image name, capture time, sensor name (which can be in 
+    combination used to get the relative path to the image), sequence to which 
+    the image is assigned, tags, GNSS coordinate and the original image size.
+
+    Parameters:
+    image_database_file (str): The path to the image database file.
+
+    Returns:
+    image_database (dict): The image database dictionary.
+
+    """
+
     image_database = {}
     with open(image_database_file, 'rt', newline='') as f:
         csv_reader = csv.reader(f)
@@ -234,6 +247,14 @@ def load_image_database(image_database_file):
 
 
 def save_image_database(image_database_file, image_database):
+    """Save the image database to a file.
+
+    Parameters:
+    image_database_file (str): The path to the image database file.
+    image_database (dict): The image database dictionary.
+
+    """
+
     if os.path.exists(image_database_file):
         file_mode = "at"
     else:
@@ -270,6 +291,16 @@ def save_image_database(image_database_file, image_database):
 
 
 def load_image_database_relpaths(image_database_file):
+    """Load the relative paths to the images from the image database file.
+
+    Parameters:
+    image_database_file (str): The path to the image database file.
+
+    Returns:
+    image_database_relpaths (list): The list of relative paths to the images.
+
+    """
+
     image_database_relpaths = []
     with open(image_database_file, 'rt', newline='') as f:
         csv_reader = csv.reader(f)
