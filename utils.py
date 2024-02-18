@@ -127,8 +127,9 @@ def load_metadata(metadata_file):
 
     for seq in metadata["sequences"].values():
         for image_name in seq["images"]:
-            seq["images"][image_name]["coords_wgs84"] = np.array(
-                seq["images"][image_name]["coords_wgs84"]
+            image_relpath = os.path.join(metadata["date"], metadata["sensor"], image_name)
+            seq["images"][image_relpath]["coords_wgs84"] = np.array(
+                seq["images"][image_relpath]["coords_wgs84"]
             ).reshape(3, 1)
 
     return metadata
@@ -196,120 +197,3 @@ def copy_resize_image(source_path, target_path, ratio):
         new_tags["EXIF:ExifImageHeight"] = new_tags["EXIF:ImageHeight"]
         
         et.set_tags(target_path, new_tags, params=["-overwrite_original"])
-
-
-def load_image_database(image_database_file):
-    """Load image database from the a file. The database contains for each 
-    image its image name, capture time, sensor name (which can be in 
-    combination used to get the relative path to the image), sequence to which 
-    the image is assigned, tags, GNSS coordinate and the original image size.
-
-    Parameters:
-    image_database_file (str): The path to the image database file.
-
-    Returns:
-    image_database (dict): The image database dictionary.
-
-    """
-
-    image_database = {}
-    with open(image_database_file, 'rt', newline='') as f:
-        csv_reader = csv.reader(f)
-        for row in csv_reader:
-            img_name = row[0]
-            date = datetime.datetime.strptime(row[1] + " " + row[2] + " " + row[3], "%Y-%m-%d %H:%M:%S %z")
-            sensor_name = row[3]
-            sequence = row[4]
-            tag_location = row[5]
-            tag_daytime = row[6]
-            if row[7] == "-":
-                coords_wgs84 = None
-            else:
-                latitude = float(row[7])
-                longitude = float(row[8])
-                altitude = float(row[9])
-                coords_wgs84 = np.array([latitude, longitude, altitude]).reshape(3, 1)
-            orig_width = int(row[10])
-            orig_height = int(row[11])
-
-            image_database[img_name] = {
-                "capture_time": date,
-                "sensor_name": sensor_name,
-                "sequence": sequence,
-                "tag_location": tag_location,
-                "tag_daytime": tag_daytime,
-                "coords_wgs84": coords_wgs84,
-                "orig_width": orig_width,
-                "orig_height": orig_height
-            }
-
-    return image_database
-
-
-def save_image_database(image_database_file, image_database):
-    """Save the image database to a file.
-
-    Parameters:
-    image_database_file (str): The path to the image database file.
-    image_database (dict): The image database dictionary.
-
-    """
-
-    if os.path.exists(image_database_file):
-        file_mode = "at"
-    else:
-        file_mode = "wt"
-
-    with open(image_database_file, mode=file_mode, newline='') as f:
-        csv_writer = csv.writer(f)
-
-        image_name_list = list(image_database.keys())
-        image_name_list.sort()
-
-        for img_name in image_name_list:
-            img_data = image_database[img_name]
-            date = img_data["capture_time"].strftime("%Y-%m-%d")
-            time = img_data["capture_time"].strftime("%H:%M:%S.%f")[:-3]
-            timezone = img_data["capture_time"].strftime("%z")
-            sensor_name = img_data["sensor_name"]
-            sequence = img_data["sequence"]
-            tag_location = img_data["tag_location"]
-            tag_daytime = img_data["tag_daytime"]
-            if "coords_wgs84" not in img_data:
-                latitude = "-"
-                longitude = "-"
-                altitude = "-"
-            else:
-                latitude = "{:.8f}".format(img_data["coords_wgs84"][0,0])
-                longitude = "{:.8f}".format(img_data["coords_wgs84"][1,0])
-                altitude = "{:.4f}".format(img_data["coords_wgs84"][2,0])
-            orig_width = img_data["orig_width"]
-            orig_height = img_data["orig_height"]
-
-            row_data = [img_name, date, time, timezone, sensor_name, sequence, tag_location, tag_daytime, latitude, longitude, altitude, orig_width, orig_height]
-            csv_writer.writerow(row_data)
-
-
-def load_image_database_relpaths(image_database_file):
-    """Load the relative paths to the images from the image database file.
-
-    Parameters:
-    image_database_file (str): The path to the image database file.
-
-    Returns:
-    image_database_relpaths (list): The list of relative paths to the images.
-
-    """
-
-    image_database_relpaths = []
-    with open(image_database_file, 'rt', newline='') as f:
-        csv_reader = csv.reader(f)
-        for row in csv_reader:
-            image_name = row[0]
-            date = row[1]
-            sensor_name = row[3]
-
-            image_relpath = os.path.join(date, sensor_name, image_name)
-            image_database_relpaths.append(image_relpath)
-        
-        return image_database_relpaths

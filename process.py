@@ -219,7 +219,8 @@ def main(args):
                 orig_image_path, new_image_path, args.image_res_ratio
             )
 
-        image_data_org[image_data[image_name]["new_name"]] = image_data[image_name]
+
+        image_data_org[new_image_relpath] = image_data[image_name]
 
     image_data = image_data_org
 
@@ -229,18 +230,18 @@ def main(args):
             print("- load GPX file: {}".format(args.gpx_file))
             timestamps, coords_wgs84 = gpx.load_gpx_file(args.gpx_file)
 
-            for image_name in image_data:
-                if image_data[image_name]["coords_wgs84"] is None:
-                    image_data[image_name]["coords_wgs84"] = gpx.gpx_interpolate(
+            for image_relpath in image_data:
+                if image_data[image_relpath]["coords_wgs84"] is None:
+                    image_data[image_relpath]["coords_wgs84"] = gpx.gpx_interpolate(
                         timestamps,
                         coords_wgs84,
-                        image_data[image_name]["capture_time"],
+                        image_data[image_relpath]["capture_time"],
                         args.gpx_mode,
                     )
                     et.set_tags(
-                        image_data[image_name]["new_path"],
+                        image_data[image_relpath]["new_path"],
                         exif.WGS84_to_exif(
-                            image_data[image_name]["coords_wgs84"]
+                            image_data[image_relpath]["coords_wgs84"]
                         ),
                         params=["-overwrite_original"],
                     )
@@ -271,17 +272,17 @@ def main(args):
     if args.geojson_file:
         print("  - load given GeoJSON file: {}".format(args.geojson_file))
         LT = locations.LocationTagger(args.geojson_file)
-    for image_name in image_data:
-        image_data[image_name]["tag_daytime"] = daytime.get_daytime_tag(
-            image_data[image_name]["coords_wgs84"][0, 0],
-            image_data[image_name]["coords_wgs84"][1, 0],
-            image_data[image_name]["capture_time"],
+    for image_relpath in image_data:
+        image_data[image_relpath]["tag_daytime"] = daytime.get_daytime_tag(
+            image_data[image_relpath]["coords_wgs84"][0, 0],
+            image_data[image_relpath]["coords_wgs84"][1, 0],
+            image_data[image_relpath]["capture_time"],
         )
         if args.geojson_file:
             # There might be multiple locations per image if multiple location
             # polygons in the GeoJSON file intersect
-            image_data[image_name]["tag_location"] = LT.tag_points(
-                image_data[image_name]["coords_wgs84"]
+            image_data[image_relpath]["tag_location"] = LT.tag_points(
+                image_data[image_relpath]["coords_wgs84"]
             )[0]
         # TODO: Add weather tag
 
@@ -312,11 +313,13 @@ def main(args):
                 metadata["image_list"] = []
                 metadata["seq_id"] = 0
 
-            sensor_image_names = os.listdir(
+            sensor_image_relpaths = os.listdir(
                 os.path.join(args.dataset, date_dir, sensor_dir)
             )
-            sensor_image_names = [p for p in sensor_image_names if p.endswith(img_exts)]
-            sensor_image_names.sort()
+            
+            sensor_image_relpaths = [p for p in sensor_image_relpaths if p.endswith(img_exts)]
+            sensor_image_relpaths = [os.path.join(date_dir, sensor_dir, p) for p in sensor_image_relpaths]
+            sensor_image_relpaths.sort()
 
             # Divide the images into sequences
             seq = {}
@@ -325,26 +328,29 @@ def main(args):
             seq["images"] = {}
             seq["coordinates"] = np.empty((3, 0))
 
-            for i in range(len(sensor_image_names)):
+            for i in range(len(sensor_image_relpaths)):
+                curr_image_relpath = sensor_image_relpaths[i]
+                prev_image_relpath = sensor_image_relpaths[i - 1]
+
                 # Skip the images that are already in the loaded metadata file
-                if sensor_image_names[i] in metadata["image_list"]:
+                if curr_image_relpath in metadata["image_list"]:
                     continue
 
                 # Initialize new sequence
                 if len(seq["images"]) == 0:
-                    seq["images"][os.path.basename(sensor_image_names[i])] = {}
-                    image_data[sensor_image_names[i]]["sequence"] = seq_name
+                    seq["images"][os.path.basename(curr_image_relpath)] = {}
+                    image_data[curr_image_relpath]["sequence"] = seq_name
                     seq["coordinates"] = np.append(
                         seq["coordinates"],
-                        image_data[sensor_image_names[i]]["coords_wgs84"],
+                        image_data[curr_image_relpath]["coords_wgs84"],
                         axis=1,
                     )
                     continue
 
                 # Compute time difference to the last image
                 time_diff = (
-                    image_data[sensor_image_names[i]]["capture_time"]
-                    - image_data[sensor_image_names[i - 1]]["capture_time"]
+                    image_data[curr_image_relpath]["capture_time"]
+                    - image_data[prev_image_relpath]["capture_time"]
                 ).total_seconds()
 
                 # Compute space distance to all the images in the sequence
@@ -352,7 +358,7 @@ def main(args):
                     np.min(
                         gnss_tools.dist_haversine(
                             gnss_tools.prep_coords_wgs84(
-                                image_data[sensor_image_names[i]]["coords_wgs84"]
+                                image_data[curr_image_relpath]["coords_wgs84"]
                             ),
                             gnss_tools.prep_coords_wgs84(seq["coordinates"]),
                         )
@@ -360,11 +366,11 @@ def main(args):
                 )
 
                 if time_diff <= args.seq_max_td and space_dist <= args.seq_max_dist:
-                    seq["images"][os.path.basename(sensor_image_names[i])] = {}
-                    image_data[sensor_image_names[i]]["sequence"] = seq_name
+                    seq["images"][os.path.basename(curr_image_relpath)] = {}
+                    image_data[curr_image_relpath]["sequence"] = seq_name
                     seq["coordinates"] = np.append(
                         seq["coordinates"],
-                        image_data[sensor_image_names[i]]["coords_wgs84"],
+                        image_data[curr_image_relpath]["coords_wgs84"],
                         axis=1,
                     )
                 else:
@@ -374,10 +380,10 @@ def main(args):
                     seq = {}
                     seq_id += 1
                     seq_name = "seq-{:0>3d}".format(seq_id)
-                    seq["images"] = {os.path.basename(sensor_image_names[i]): {}}
-                    image_data[sensor_image_names[i]]["sequence"] = seq_name
+                    seq["images"] = {os.path.basename(curr_image_relpath): {}}
+                    image_data[curr_image_relpath]["sequence"] = seq_name
                     seq["coordinates"] = np.array(
-                        image_data[sensor_image_names[i]]["coords_wgs84"]
+                        image_data[curr_image_relpath]["coords_wgs84"]
                     )
                     seq["inter_sequence_time_diff"] = time_diff
                     seq["inter_sequence_space_dist"] = space_dist
@@ -389,23 +395,25 @@ def main(args):
 
             # Add metadata to each image in the sequence
             for seq in metadata["sequences"].values():
-                for image_path in seq["images"].keys():
-                    seq["images"][image_path]["capture_time"] = image_data[image_path][
+                for image_name in seq["images"].keys():
+                    image_relpath = os.path.join(date_dir, sensor_name, image_name)
+                    
+                    seq["images"][image_relpath]["capture_time"] = image_data[image_relpath][
                         "capture_time"
                     ]
-                    seq["images"][image_path]["coords_wgs84"] = image_data[image_path][
+                    seq["images"][image_relpath]["coords_wgs84"] = image_data[image_relpath][
                         "coords_wgs84"
                     ]
-                    seq["images"][image_path]["orig_width"] = image_data[image_path][
+                    seq["images"][image_relpath]["orig_width"] = image_data[image_relpath][
                         "orig_width"
                     ]
-                    seq["images"][image_path]["orig_height"] = image_data[image_path][
+                    seq["images"][image_relpath]["orig_height"] = image_data[image_relpath][
                         "orig_height"
                     ]
-                    seq["images"][image_path]["tag_location"] = image_data[image_path][
+                    seq["images"][image_relpath]["tag_location"] = image_data[image_relpath][
                         "tag_location"
                     ]
-                    seq["images"][image_path]["tag_daytime"] = image_data[image_path][
+                    seq["images"][image_relpath]["tag_daytime"] = image_data[image_relpath][
                         "tag_daytime"
                     ]
 
