@@ -34,6 +34,7 @@ import daytime
 import gpx
 import video
 import utils
+from img_db import ImageDatabase
 
 
 parser = argparse.ArgumentParser(description="Process and organize the data.")
@@ -136,11 +137,13 @@ def main(args):
     if not args.image_database_file:
         args.image_database_file = os.path.join(args.dataset, "image_database.csv")
 
+    old_image_database = ImageDatabase(root_path = args.dataset)
+
     if os.path.exists(args.image_database_file):
-        print("- load image list from the given image database: {}".format(args.image_database_file))
-        image_database_relpaths = utils.load_image_database_relpaths(args.image_database_file)
-    else:
-        image_database_relpaths = []
+        print("- load image database: {}".format(args.image_database_file))
+        old_image_database.load(args.image_database_file)
+        
+    image_database_relpaths = old_image_database.get_relpaths()
 
     # Get the list of image and video paths
     image_paths = []
@@ -440,10 +443,11 @@ def main(args):
             yaml.dump(sensor_list, f)
     
     # Save the image database
+    new_image_database = ImageDatabase(root_path = args.dataset, db = image_data)
     if args.new_image_database_file:
-        utils.save_image_database(args.new_image_database_file, image_data)
+        new_image_database.save(args.new_image_database_file)
     else:
-        utils.save_image_database(args.image_database_file, image_data)
+        new_image_database.save(args.image_database_file)
 
 
 if __name__ == "__main__":

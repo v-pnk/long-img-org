@@ -42,14 +42,101 @@ class ImageDatabase:
     ]
 
 
-    def __init__(self):
+    def __init__(self, db={}, root_path=None):
         """Initialize the image database."""
 
-        self.db = {}
-        self.root_path = None
+        self.db = db
+        self.root_path = root_path
 
 
-    def load_image_database(self, image_database_path):
+    def __len__(self):
+        """Get the number of images in the database.
+
+        Returns:
+        int: The number of images.
+
+        """
+
+        return len(self.db)
+    
+
+    def __getitem__(self, img_relpath):
+        """Get the metadata of an image.
+
+        Parameters:
+        img_relpath (str): The relative path of the image.
+
+        Returns:
+        dict: The metadata of the image.
+
+        """
+
+        return self.db[img_relpath]
+    
+
+    def __setitem__(self, img_relpath, img_data):
+        """Set the metadata of an image. Check if the metadata fields are valid.
+
+        Parameters:
+        img_relpath (str): The relative path of the image.
+        img_data (dict): The metadata of the image.
+
+        """
+
+        for key in img_data:
+            assert key in self.metadata_fields, "Invalid metadata field: " + key
+
+        self.db[img_relpath] = img_data
+    
+
+    def __delitem__(self, img_relpath):
+        """Delete an image from the database.
+
+        Parameters:
+        img_relpath (str): The relative path of the image.
+
+        """
+
+        del self.db[img_relpath]
+    
+
+    def __iter__(self):
+        """Get an iterator for the image database.
+
+        Returns:
+        iter: The iterator.
+
+        """
+
+        return iter(self.db)
+    
+
+    def __next__(self):
+        """Get the next image in the database.
+
+        Returns:
+        str: The relative path of the next image.
+
+        """
+
+        return next(self.db)
+    
+
+    def __contains__(self, img_relpath):
+        """Check if an image is in the database.
+
+        Parameters:
+        img_relpath (str): The relative path of the image.
+
+        Returns:
+        bool: True if the image is in the database, False otherwise.
+
+        """
+
+        return img_relpath in self.db
+
+
+    def load(self, image_database_path):
         """Load the image database from a file.
 
         Parameters:
@@ -93,7 +180,7 @@ class ImageDatabase:
                 }
 
 
-    def save_image_database(self, image_database_path):
+    def save(self, image_database_path):
         """Save the image database to a file.
 
         Parameters:
@@ -149,7 +236,7 @@ class ImageDatabase:
                 csv_writer.writerow(row_data)
 
 
-    def get_image_database_relpaths(self):
+    def get_relpaths(self):
         """Get the relative paths of the images in the database.
 
         Returns:
