@@ -150,7 +150,7 @@ class ImageDatabase:
             csv_reader = csv.reader(f)
             for row in csv_reader:
                 img_name = row[0]
-                date = datetime.datetime.strptime(row[1] + " " + row[2] + " " + row[3], "%Y-%m-%d %H:%M:%S %z")
+                date = datetime.datetime.strptime(row[1] + " " + row[2] + " " + row[3], "%Y-%m-%d %H:%M:%S.%f %z")
                 sensor_name = row[3]
                 sequence = row[4]
                 tag_location = row[5]
