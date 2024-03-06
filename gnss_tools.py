@@ -31,6 +31,9 @@ def prep_coords_wgs84(coords_wgs84):
     WGS-84 coordinates with shape (3, N).
     """
 
+    if coords_wgs84 is None:
+        return None
+
     # convert latitude and longitude to radians
     coords_wgs84_prep = np.empty(coords_wgs84.shape)
     coords_wgs84_prep[0, :] = np.radians(coords_wgs84[0, :])
@@ -59,6 +62,9 @@ def WGS84_to_ECEF(coords_wgs84):
     coords_ecef (np.ndarray): A numpy array containing the ECEF coordinates
     with shape (3, N).
     """
+
+    if coords_wgs84 is None:
+        return None
 
     # prime vertical radius of curvature
     N = R_EQU / np.sqrt(1 - ECC2 * np.sin(coords_wgs84[0, :]) ** 2)
@@ -95,6 +101,9 @@ def ECEF_to_ENU(coords_ecef, origin_coords_wgs84):
     Returns:
     coords_enu: A numpy array containing the ENU coordinates with shape (3, N).
     """
+
+    if coords_ecef is None or origin_coords_wgs84 is None:
+        return None
 
     sin_lat_orig = math.sin(origin_coords_wgs84[0, 0])
     cos_lat_orig = math.cos(origin_coords_wgs84[0, 0])
@@ -135,6 +144,9 @@ def WGS84_to_ENU(coords_wgs84, origin_coords_wgs84):
     coords_enu (np.ndarray): A numpy array containing the local tangent plane
     ENU-oriented coordinates with shape (3, N).
     """
+
+    if coords_wgs84 is None or origin_coords_wgs84 is None:
+        return None
 
     coords_ecef = WGS84_to_ECEF(coords_wgs84)
     coords_enu = ECEF_to_ENU(coords_ecef, origin_coords_wgs84)
@@ -207,6 +219,9 @@ def dist_haversine(p1, p2, alt=False):
     Returns:
     dist (np.ndarray): Metric distance between p1 and p2.
     """
+
+    if p1 is None or p2 is None:
+        return None
 
     lat1 = p1[0, :]
     lon1 = p1[1, :]

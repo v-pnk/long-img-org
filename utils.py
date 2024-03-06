@@ -126,11 +126,14 @@ def load_metadata(metadata_file):
         metadata = yaml.safe_load(f)
 
     for seq in metadata["sequences"].values():
-        for image_name in seq["images"]:
+        all_names = list(seq["images"].keys())
+        for image_name in all_names:
             image_relpath = os.path.join(metadata["date"], metadata["sensor"], image_name)
-            seq["images"][image_relpath]["coords_wgs84"] = np.array(
-                seq["images"][image_relpath]["coords_wgs84"]
-            ).reshape(3, 1)
+            seq["images"][image_relpath] = seq["images"].pop(image_name)
+            if seq["images"][image_relpath]["coords_wgs84"] is not None:
+                seq["images"][image_relpath]["coords_wgs84"] = np.array(
+                    seq["images"][image_relpath]["coords_wgs84"]
+                ).reshape(3, 1)
 
     return metadata
 
@@ -146,10 +149,16 @@ def save_metadata(metadata_file, metadata):
 
     metadata_copy = metadata.copy()
     for seq in metadata_copy["sequences"].values():
-        for image_name in seq["images"]:
-            seq["images"][image_name]["coords_wgs84"] = (
-                seq["images"][image_name]["coords_wgs84"].flatten().tolist()
-            )
+        all_relpaths = list(seq["images"].keys())
+
+        for image_relpath in all_relpaths:
+            image_name = os.path.basename(image_relpath)
+            seq["images"][image_name] = seq["images"].pop(image_relpath)
+
+            if seq["images"][image_name]["coords_wgs84"] is not None:
+                seq["images"][image_name]["coords_wgs84"] = (
+                    seq["images"][image_name]["coords_wgs84"].flatten().tolist()
+                )
 
     with open(metadata_file, "wt") as f:
         yaml.dump(metadata, f)

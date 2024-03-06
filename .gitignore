@@ -1,2 +1,2 @@
 __pycache__/
-.gguf
+*.gguf

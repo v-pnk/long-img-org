@@ -151,19 +151,19 @@ class ImageDatabase:
             for row in csv_reader:
                 img_name = row[0]
                 date = datetime.datetime.strptime(row[1] + " " + row[2] + " " + row[3], "%Y-%m-%d %H:%M:%S.%f %z")
-                sensor_name = row[3]
-                sequence = row[4]
-                tag_location = row[5]
-                tag_daytime = row[6]
-                if row[7] == "-":
+                sensor_name = row[4]
+                sequence = row[5]
+                tag_location = row[6]
+                tag_daytime = row[7]
+                if row[8] == "-":
                     coords_wgs84 = None
                 else:
-                    latitude = float(row[7])
-                    longitude = float(row[8])
-                    altitude = float(row[9])
+                    latitude = float(row[8])
+                    longitude = float(row[9])
+                    altitude = float(row[10])
                     coords_wgs84 = np.array([latitude, longitude, altitude]).reshape(3, 1)
-                orig_width = int(row[10])
-                orig_height = int(row[11])
+                orig_width = int(row[11])
+                orig_height = int(row[12])
 
                 img_relpath = os.path.join(date.strftime("%Y-%m-%d"), 
                                            sensor_name, img_name)
@@ -201,7 +201,7 @@ class ImageDatabase:
 
             for img_relpath in image_relpath_list:
                 img_name = os.path.basename(img_relpath)
-                img_data = self.db[img_name]
+                img_data = self.db[img_relpath]
                 date = img_data["capture_time"].strftime("%Y-%m-%d")
                 time = img_data["capture_time"].strftime("%H:%M:%S.%f")[:-3]
                 timezone = img_data["capture_time"].strftime("%z")
@@ -209,7 +209,7 @@ class ImageDatabase:
                 sequence = img_data["sequence"]
                 tag_location = img_data["tag_location"]
                 tag_daytime = img_data["tag_daytime"]
-                if "coords_wgs84" not in img_data:
+                if "coords_wgs84" not in img_data or img_data["coords_wgs84"] is None:
                     latitude = "-"
                     longitude = "-"
                     altitude = "-"
@@ -244,7 +244,7 @@ class ImageDatabase:
 
         """
 
-        rel_paths = [""].len(self.db)
+        rel_paths = [""]*len(self.db)
 
         for i, img_name in enumerate(self.db):
             capture_date = self.db[img_name]["capture_time"].strftime("%Y-%m-%d")

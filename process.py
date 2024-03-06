@@ -98,6 +98,11 @@ parser.add_argument(
     help="GPX interpolation mode. The \"nearest\" and \"linear\" raise an error if the time is outside the GPX time range.",
 )
 parser.add_argument(
+    "--gpx_overwrite",
+    action="store_true",
+    help="The GNSS data from GPX has precedence over the EXIF data in the images.",
+)
+parser.add_argument(
     "--video_fps",
     type=float,
     default=2.0,
@@ -253,7 +258,7 @@ def main(args):
 
         with exiftool.ExifToolHelper() as et:
             for image_relpath in image_data:
-                if image_data[image_relpath]["coords_wgs84"] is None:
+                if args.gpx_overwrite or image_data[image_relpath]["coords_wgs84"] is None:
                     image_data[image_relpath]["coords_wgs84"] = gpx.gpx_interpolate_mult(
                         timestamps,
                         coords_wgs84,
@@ -295,18 +300,28 @@ def main(args):
         print("  - load given GeoJSON file: {}".format(args.geojson_file))
         LT = locations.LocationTagger(args.geojson_file)
     for image_relpath in image_data:
-        image_data[image_relpath]["tag_daytime"] = daytime.get_daytime_tag(
-            image_data[image_relpath]["coords_wgs84"][0, 0],
-            image_data[image_relpath]["coords_wgs84"][1, 0],
-            image_data[image_relpath]["capture_time"],
-        )
-        if args.geojson_file:
-            # There might be multiple locations per image if multiple location
-            # polygons in the GeoJSON file intersect
-            image_data[image_relpath]["tag_location"] = LT.tag_points(
-                image_data[image_relpath]["coords_wgs84"]
-            )[0]
-        # TODO: Add weather tag
+        # Tag the images with day-time tag
+        if image_data[image_relpath]["coords_wgs84"] is not None:
+            image_data[image_relpath]["tag_daytime"] = daytime.get_daytime_tag(
+                image_data[image_relpath]["coords_wgs84"][0, 0],
+                image_data[image_relpath]["coords_wgs84"][1, 0],
+                image_data[image_relpath]["capture_time"],
+            )
+        else:
+            image_data[image_relpath]["tag_daytime"] = "unknown"
+        
+        # Tag the images with location tag
+        if image_data[image_relpath]["coords_wgs84"] is not None:
+            if args.geojson_file:
+                # There might be multiple locations per image if multiple location
+                # polygons in the GeoJSON file intersect
+                image_data[image_relpath]["tag_location"] = LT.tag_points(
+                    image_data[image_relpath]["coords_wgs84"]
+                )[0]
+        else:
+            image_data[image_relpath]["tag_location"] = "unknown"
+        
+        # TODO: Tag the iamges with other image-based tags
 
     # Define the metadata for each sensor directory
     print("- define the metadata for each sensor subdirectory")
@@ -360,13 +375,15 @@ def main(args):
 
                 # Initialize new sequence
                 if len(seq["images"]) == 0:
-                    seq["images"][os.path.basename(curr_image_relpath)] = {}
+                    seq["images"][curr_image_relpath] = {}
                     image_data[curr_image_relpath]["sequence"] = seq_name
-                    seq["coordinates"] = np.append(
-                        seq["coordinates"],
-                        image_data[curr_image_relpath]["coords_wgs84"],
-                        axis=1,
-                    )
+
+                    if image_data[curr_image_relpath]["coords_wgs84"] is not None:
+                        seq["coordinates"] = np.append(
+                            seq["coordinates"],
+                            image_data[curr_image_relpath]["coords_wgs84"],
+                            axis=1,
+                        )
                     continue
 
                 # Compute time difference to the last image
@@ -376,25 +393,30 @@ def main(args):
                 ).total_seconds()
 
                 # Compute space distance to all the images in the sequence
-                space_dist = float(
-                    np.min(
-                        gnss_tools.dist_haversine(
-                            gnss_tools.prep_coords_wgs84(
-                                image_data[curr_image_relpath]["coords_wgs84"]
-                            ),
-                            gnss_tools.prep_coords_wgs84(seq["coordinates"]),
+                if image_data[curr_image_relpath]["coords_wgs84"] is not None:
+                    space_dist = float(
+                        np.min(
+                            gnss_tools.dist_haversine(
+                                gnss_tools.prep_coords_wgs84(
+                                    image_data[curr_image_relpath]["coords_wgs84"]
+                                ),
+                                gnss_tools.prep_coords_wgs84(seq["coordinates"]),
+                            )
                         )
                     )
-                )
+                else:
+                    space_dist = 0.0
 
                 if time_diff <= args.seq_max_td and space_dist <= args.seq_max_dist:
-                    seq["images"][os.path.basename(curr_image_relpath)] = {}
+                    seq["images"][curr_image_relpath] = {}
                     image_data[curr_image_relpath]["sequence"] = seq_name
-                    seq["coordinates"] = np.append(
-                        seq["coordinates"],
-                        image_data[curr_image_relpath]["coords_wgs84"],
-                        axis=1,
-                    )
+
+                    if image_data[curr_image_relpath]["coords_wgs84"] is not None:
+                        seq["coordinates"] = np.append(
+                            seq["coordinates"],
+                            image_data[curr_image_relpath]["coords_wgs84"],
+                            axis=1,
+                        )
                 else:
                     del seq["coordinates"]
                     metadata["sequences"][seq_name] = seq
@@ -402,11 +424,16 @@ def main(args):
                     seq = {}
                     seq_id += 1
                     seq_name = "seq-{:0>3d}".format(seq_id)
-                    seq["images"] = {os.path.basename(curr_image_relpath): {}}
+                    seq["images"] = {curr_image_relpath: {}}
                     image_data[curr_image_relpath]["sequence"] = seq_name
-                    seq["coordinates"] = np.array(
-                        image_data[curr_image_relpath]["coords_wgs84"]
-                    )
+
+                    if image_data[curr_image_relpath]["coords_wgs84"] is not None:
+                        seq["coordinates"] = np.array(
+                            image_data[curr_image_relpath]["coords_wgs84"]
+                        )
+                    else:
+                        seq["coordinates"] = np.empty((3, 0))
+                        
                     seq["inter_sequence_time_diff"] = time_diff
                     seq["inter_sequence_space_dist"] = space_dist
 
@@ -417,9 +444,7 @@ def main(args):
 
             # Add metadata to each image in the sequence
             for seq in metadata["sequences"].values():
-                for image_name in seq["images"].keys():
-                    image_relpath = os.path.join(date_dir, sensor_name, image_name)
-                    
+                for image_relpath in seq["images"].keys():
                     seq["images"][image_relpath]["capture_time"] = image_data[image_relpath][
                         "capture_time"
                     ]
