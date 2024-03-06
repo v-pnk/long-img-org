@@ -117,7 +117,8 @@ def main(args):
         for img_name in os.listdir(args.images)
         if img_name.endswith(img_exts)
     ]
-    f_label_file = open(args.label_file, "at")
+    f_label_file = open(args.label_file, "wt")
+    f_label_file.write("# label list:\n" + " ".join(label_questions.keys()) + "\n\n# image labels:\n")
 
     for img_path in tqdm(image_list):
         img_name = os.path.basename(img_path)
