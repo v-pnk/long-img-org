@@ -88,7 +88,7 @@ parser.add_argument(
 parser.add_argument(
     "--gpx_file",
     type=str, 
-    help="The GPX file with the GPS data.",
+    help="The GPX file / directory with files with the GNSS data.",
 )
 parser.add_argument(
     "--gpx_mode",
@@ -228,14 +228,33 @@ def main(args):
     image_data = image_data_org
 
     # Load the GPX file
-    if args.gpx_file:
-        with exiftool.ExifToolHelper() as et:
-            print("- load GPX file: {}".format(args.gpx_file))
-            timestamps, coords_wgs84 = gpx.load_gpx_file(args.gpx_file)
+    if args.gpx_file is not None:
+        if os.path.isdir(args.gpx_file):
+            gpx_files = [
+                os.path.join(args.gpx_file, f)
+                for f in os.listdir(args.gpx_file)
+                if f.endswith(".gpx")
+            ]
+            gpx_files.sort()
+        elif os.path.isfile(args.gpx_file):
+            gpx_files = [args.gpx_file]
+        else:
+            raise FileNotFoundError("The given GPX file does not exist.")
+        
+        timestamps = []
+        coords_wgs84 = []
 
+        for gpx_file in gpx_files:
+            print("- load GPX file: {}".format(gpx_file))
+            timestamps_curr, coords_wgs84_curr = gpx.load_gpx_file(gpx_file)
+
+            timestamps.append(timestamps, timestamps_curr)
+            coords_wgs84.append(coords_wgs84, coords_wgs84_curr)
+
+        with exiftool.ExifToolHelper() as et:
             for image_relpath in image_data:
                 if image_data[image_relpath]["coords_wgs84"] is None:
-                    image_data[image_relpath]["coords_wgs84"] = gpx.gpx_interpolate(
+                    image_data[image_relpath]["coords_wgs84"] = gpx.gpx_interpolate_mult(
                         timestamps,
                         coords_wgs84,
                         image_data[image_relpath]["capture_time"],

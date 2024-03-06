@@ -37,7 +37,7 @@ parser.add_argument(
 parser.add_argument(
     "--gpx_file", 
     type=str, 
-    help="Path to the GPX track file."
+    help="Path to the GPX track file / directory with files."
 )
 parser.add_argument(
     "--gpx_mode", 
@@ -68,7 +68,7 @@ def process_video(video_path, frame_dir, frame_rate, gpx_file=None, gpx_mode="ne
     video_path (str): Video file path.
     frame_dir (str): Output directory for the frames.
     frame_rate (float): Frame rate for the extraction (frames per second).
-    gpx_file (str): GPX file path.
+    gpx_file (str): GPX file path / path to directory with files.
 
     """
 
@@ -81,13 +81,34 @@ def process_video(video_path, frame_dir, frame_rate, gpx_file=None, gpx_mode="ne
         print(f"- extracting frames from the video")
     frames = extract_frames(video_path, metadata["start_time"], frame_rate, res_ratio)
 
-    if gpx_file is not None:
-        if verbose:
-            print(f"- loading GPS data from: {gpx_file}")
+    if args.gpx_file is not None:
+        if os.path.isdir(args.gpx_file):
+            gpx_files = [
+                os.path.join(args.gpx_file, f)
+                for f in os.listdir(args.gpx_file)
+                if f.endswith(".gpx")
+            ]
+            gpx_files.sort()
+        elif os.path.isfile(args.gpx_file):
+            gpx_files = [args.gpx_file]
+        else:
+            raise FileNotFoundError("The given GPX file does not exist.")
+        
+        timestamps = []
+        coords_wgs84 = []
 
-        timestamps, coords_wgs84 = gpx.load_gpx_file(gpx_file)
+        for gpx_file in gpx_files:
+            if verbose:
+                print(f"- loading GPS data from: {gpx_file}")
+            
+            timestamps_curr, coords_wgs84_curr = gpx.load_gpx_file(gpx_file)
+
+            timestamps.append(timestamps, timestamps_curr)
+            coords_wgs84.append(coords_wgs84, coords_wgs84_curr)
+
+        
         for frame in frames:
-            frame["coords_wgs84"] = gpx.gpx_interpolate(
+            frame["coords_wgs84"] = gpx.gpx_interpolate_mult(
                 timestamps, coords_wgs84, frame["capture_time"], mode=gpx_mode
             )
             frame["sensor_name"] = metadata["sensor_name"]

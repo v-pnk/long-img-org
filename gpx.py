@@ -49,8 +49,64 @@ def load_gpx_file(gpx_file: str):
     return timestamps, coords_wgs84
 
 
+def gpx_interpolate_mult(timestamps, coords_wgs84, capture_time, mode="nearest"):
+    """Interpolate the GNSS coordinates for the given capture time and multiple
+    GPX time series.
+
+    Parameters:
+    timestamps (Union[np.ndarray, list[np.ndarray]]): The time series of 
+        the GNSS coordinates in UTC. If multiple time series are given,
+        we assume that the time series are not overlapping.
+    coords_wgs84 (Union[np.ndarray, list[np.ndarray]]): The GNSS coordinates.
+    capture_time (datetime): The capture time.
+    mode (str): The mode of the interpolation. The options are "nearest",
+        "nearest_outside", "linear", and "linear_outside".
+
+
+    Returns:
+    coords_wgs84 (np.ndarray): The interpolated GNSS coordinates.
+
+    """
+
+    if type(timestamps) is not list:
+        assert type(coords_wgs84) is not list
+        timestamps = [timestamps]
+        coords_wgs84 = [coords_wgs84]
+
+    assert len(timestamps) == len(coords_wgs84)
+
+    min_times = np.array([ts[0] for ts in timestamps])
+    max_times = np.array([ts[-1] for ts in timestamps])
+
+    capture_time_utc = capture_time.astimezone(datetime.timezone.utc).replace(
+        tzinfo=None
+    )
+
+    
+    nearest_min_ts_idx = np.argmin(np.abs(min_times - capture_time_utc))
+    nearest_max_ts_idx = np.argmin(np.abs(max_times - capture_time_utc))
+    nearest_min_dt = np.min(np.abs(min_times - capture_time_utc))
+    nearest_max_dt = np.min(np.abs(max_times - capture_time_utc))
+
+    if nearest_min_dt < nearest_max_dt:
+        return gpx_interpolate(
+            timestamps[nearest_min_ts_idx],
+            coords_wgs84[nearest_min_ts_idx],
+            capture_time_utc,
+            mode,
+        )
+    else:
+        return gpx_interpolate(
+            timestamps[nearest_max_ts_idx],
+            coords_wgs84[nearest_max_ts_idx],
+            capture_time_utc,
+            mode,
+        )
+        
+
 def gpx_interpolate(timestamps, coords_wgs84, capture_time, mode="nearest"):
-    """Interpolate the GNSS coordinates for the given capture time.
+    """Interpolate the GNSS coordinates for the given capture time and single
+    GPX time series.
 
     Parameters:
     timestamps (np.ndarray): The time series of the GNSS coordinates in UTC.
@@ -58,7 +114,6 @@ def gpx_interpolate(timestamps, coords_wgs84, capture_time, mode="nearest"):
     capture_time (datetime): The capture time.
     mode (str): The mode of the interpolation. The options are "nearest",
         "nearest_outside", "linear", and "linear_outside".
-
 
     Returns:
     coords_wgs84 (np.ndarray): The interpolated GNSS coordinates.
@@ -75,16 +130,16 @@ def gpx_interpolate(timestamps, coords_wgs84, capture_time, mode="nearest"):
     if capture_time_utc < min_time or capture_time_utc > max_time:
         if mode in ["nearest_outside", "linear_outside"]:
             if capture_time_utc < min_time:
-                return coords_wgs84[0]
+                return coords_wgs84[:, 0]
             else:
-                return coords_wgs84[-1]
+                return coords_wgs84[:, -1]
         else:
             raise ValueError("The capture time is outside the GPX time range.")
 
     nearest_index = np.argmin(np.abs(timestamps - capture_time_utc))
 
     if mode in ["nearest", "nearest_outside"]:
-        return coords_wgs84[nearest_index]
+        return coords_wgs84[:, nearest_index]
     elif mode in ["linear", "linear_outside"]:
         if timestamps[nearest_index] < capture_time_utc:
             t1 = timestamps[nearest_index]
