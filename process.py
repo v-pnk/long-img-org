@@ -19,8 +19,6 @@ The processing and organization includes:
 
 import os
 import shutil
-import datetime
-import datetime
 
 import argparse
 import numpy as np
@@ -253,8 +251,8 @@ def main(args):
             print("- load GPX file: {}".format(gpx_file))
             timestamps_curr, coords_wgs84_curr = gpx.load_gpx_file(gpx_file)
 
-            timestamps.append(timestamps, timestamps_curr)
-            coords_wgs84.append(coords_wgs84, coords_wgs84_curr)
+            timestamps.append(timestamps_curr)
+            coords_wgs84.append(coords_wgs84_curr)
 
         with exiftool.ExifToolHelper() as et:
             for image_relpath in image_data:
@@ -318,8 +316,10 @@ def main(args):
                 image_data[image_relpath]["tag_location"] = LT.tag_points(
                     image_data[image_relpath]["coords_wgs84"]
                 )[0]
+            else:
+                image_data[image_relpath]["tag_location"] = ["unknown"]
         else:
-            image_data[image_relpath]["tag_location"] = "unknown"
+            image_data[image_relpath]["tag_location"] = ["unknown"]
         
         # TODO: Tag the iamges with other image-based tags
 
@@ -344,18 +344,20 @@ def main(args):
                     metadata["seq_id"] = max(
                         int(sname.split("-")[1]), metadata["seq_id"]
                     )
+                metadata_image_relpaths = metadata["image_list"].copy()
             else:
                 metadata = {}
                 metadata["sequences"] = {}
                 metadata["image_list"] = []
                 metadata["seq_id"] = 0
+                metadata_image_relpaths = []
 
             sensor_image_relpaths = os.listdir(
                 os.path.join(args.dataset, date_dir, sensor_dir)
             )
-            
-            sensor_image_relpaths = [p for p in sensor_image_relpaths if p.endswith(img_exts)]
             sensor_image_relpaths = [os.path.join(date_dir, sensor_dir, p) for p in sensor_image_relpaths]
+            sensor_image_relpaths = [p for p in sensor_image_relpaths if p not in image_database_relpaths]
+            sensor_image_relpaths = [p for p in sensor_image_relpaths if p.endswith(img_exts)]
             sensor_image_relpaths.sort()
 
             # Divide the images into sequences
@@ -445,6 +447,9 @@ def main(args):
             # Add metadata to each image in the sequence
             for seq in metadata["sequences"].values():
                 for image_relpath in seq["images"].keys():
+                    if image_relpath in metadata_image_relpaths:
+                        continue
+
                     seq["images"][image_relpath]["capture_time"] = image_data[image_relpath][
                         "capture_time"
                     ]
@@ -475,7 +480,7 @@ def main(args):
             metadata["date"] = date_dir
             metadata["sensor"] = sensor_name
 
-            print("  - write metadata file: {}".format(metadata_file))
+            print("  - write metadata file: {}".format(os.path.relpath(metadata_file, args.dataset)))
             utils.save_metadata(metadata_file, metadata)
 
     # Save the sensor list

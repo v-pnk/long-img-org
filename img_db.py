@@ -244,13 +244,7 @@ class ImageDatabase:
 
         """
 
-        rel_paths = [""]*len(self.db)
-
-        for i, img_name in enumerate(self.db):
-            capture_date = self.db[img_name]["capture_time"].strftime("%Y-%m-%d")
-            sensor_name = self.db[img_name]["sensor_name"]
-            rel_paths[i] = os.path.join(capture_date, sensor_name, img_name)
-        
+        rel_paths = list(self.db.keys())
         rel_paths.sort()
         return rel_paths
             

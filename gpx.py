@@ -8,7 +8,7 @@ import datetime
 import numpy as np
 
 
-def load_gpx_file(gpx_file: str):
+def load_gpx_file(gpx_file: str, ):
     """Parse the GPX file and get the time series of GNSS coordinates.
 
     Parameters:
@@ -35,13 +35,39 @@ def load_gpx_file(gpx_file: str):
 
         alt = float(trkpt.find("{" + schema + "}ele").text)
 
-        # The time in GPX should be in UTC / GMT time zone
+        # Time can have multiple formats
+        # - standard format in UTC time zone:   2008-07-18T14:07:50.000Z
+        # - format with time zone:              2008-07-18T16:07:50.000+02:00
         time_str = trkpt.find("{" + schema + "}time").text
-        time_str_crop = time_str[:19]  # crop the subsecond part and Z
+        time_str_crop = time_str[:19]  # crop only the date and time part
         time = datetime.datetime.strptime(time_str_crop, "%Y-%m-%dT%H:%M:%S")
+        
+        # If the time string has subsecond and/or timezone information
         if len(time_str) > 20:
-            # Add the microseconds
-            time = time.replace(microsecond=1000 * int(time_str[20:23]))
+            time_str_crop = time_str[19:]
+            dot_idx = time_str_crop.find(".")
+            sign_idx = time_str_crop.find("+") if "+" in time_str_crop else time_str_crop.find("-")
+
+            if sign_idx != -1:
+                tz_str = time_str_crop[sign_idx:].replace(":", "")
+                if dot_idx != -1:
+                    subsec_str = time_str_crop[dot_idx + 1:sign_idx].replace("Z", "")
+                else:
+                    subsec_str = "0"
+            else:
+                tz_str = "+0000"
+                if dot_idx != -1:
+                    subsec_str = time_str_crop[dot_idx + 1:].replace("Z", "")
+                else:
+                    subsec_str = "0"
+            
+            time = time.replace(microsecond=1000 * int(subsec_str))
+            tz = datetime.datetime.strptime(tz_str, "%z")
+            tz = datetime.timezone(tz.utcoffset())
+            time = time.replace(tzinfo=tz)
+
+            # Convert to UTC
+            time = time.astimezone(datetime.timezone.utc).replace(tzinfo=None)
 
         timestamps = np.append(timestamps, time)
         coords_wgs84 = np.append(coords_wgs84, np.array([[lat], [lon], [alt]]), axis=1)
@@ -78,10 +104,15 @@ def gpx_interpolate_mult(timestamps, coords_wgs84, capture_time, mode="nearest")
     min_times = np.array([ts[0] for ts in timestamps])
     max_times = np.array([ts[-1] for ts in timestamps])
 
-    capture_time_utc = capture_time.astimezone(datetime.timezone.utc).replace(
-        tzinfo=None
-    )
-
+    # Convert to UTC time zone
+    # - if .astimezone() would be called on a naive datetime object (without 
+    #   time zone), it would assume the system's local timezone
+    if capture_time.tzinfo is not None:
+        capture_time_utc = capture_time.astimezone(datetime.timezone.utc).replace(
+            tzinfo=None
+        )
+    else:
+        capture_time_utc = capture_time
     
     nearest_min_ts_idx = np.argmin(np.abs(min_times - capture_time_utc))
     nearest_max_ts_idx = np.argmin(np.abs(max_times - capture_time_utc))
@@ -116,30 +147,36 @@ def gpx_interpolate(timestamps, coords_wgs84, capture_time, mode="nearest"):
         "nearest_outside", "linear", and "linear_outside".
 
     Returns:
-    coords_wgs84 (np.ndarray): The interpolated GNSS coordinates.
+    coords_wgs84 (np.ndarray): The interpolated GNSS coordinates with (3x1) shape.
 
     """
 
     min_time = timestamps[0]
     max_time = timestamps[-1]
 
-    capture_time_utc = capture_time.astimezone(datetime.timezone.utc).replace(
-        tzinfo=None
-    )
+    # Convert to UTC time zone
+    # - if .astimezone() would be called on a naive datetime object (without 
+    #   time zone), it would assume the system's local timezone
+    if capture_time.tzinfo is not None:
+        capture_time_utc = capture_time.astimezone(datetime.timezone.utc).replace(
+            tzinfo=None
+        )
+    else:
+        capture_time_utc = capture_time
 
     if capture_time_utc < min_time or capture_time_utc > max_time:
         if mode in ["nearest_outside", "linear_outside"]:
             if capture_time_utc < min_time:
-                return coords_wgs84[:, 0]
+                return np.reshape(coords_wgs84[:, 0], (3, 1))
             else:
-                return coords_wgs84[:, -1]
+                return np.reshape(coords_wgs84[:, -1], (3, 1))
         else:
-            raise ValueError("The capture time is outside the GPX time range.")
+            assert False, "The capture time is outside the GPX time range: time = {}, range = ({} - {})".format(capture_time_utc, min_time, max_time)
 
     nearest_index = np.argmin(np.abs(timestamps - capture_time_utc))
 
     if mode in ["nearest", "nearest_outside"]:
-        return coords_wgs84[:, nearest_index]
+        return np.reshape(coords_wgs84[:, nearest_index], (3,1))
     elif mode in ["linear", "linear_outside"]:
         if timestamps[nearest_index] < capture_time_utc:
             t1 = timestamps[nearest_index]
@@ -153,4 +190,4 @@ def gpx_interpolate(timestamps, coords_wgs84, capture_time, mode="nearest"):
             c2 = coords_wgs84[:, nearest_index]
 
         dt = (capture_time_utc - t1) / (t2 - t1)
-        return c1 + dt * (c2 - c1)
+        return np.reshape(c1 + dt * (c2 - c1), (3, 1))
