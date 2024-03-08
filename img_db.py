@@ -1,5 +1,29 @@
 """
-Image database class.
+Image database class implementation and query command-line tool. 
+The command-line tool filters the input image database based on a query string,
+which specifies the filter conditions.
+
+The query string has the format: 
+"key1 : value1; key2 : value2"
+The valueN can be a single value, a range between two values ("[min, max]"), 
+an open range ("[min" / "max]"), or a list of values ("val1, val2, val3"). 
+
+The valid keys are:
+- capture_date
+- capture_year
+- capture_month
+- capture_hour
+- sensor_name
+- tag_location
+- tag_daytime
+- latitude
+- longitude
+- altitude
+
+The command-line tool can also save the filtered database to a file,
+create a file containing the list of images in the filtered database, and
+copy the images in the filtered database to a destination directory.
+
 """
 
 
@@ -7,8 +31,72 @@ import os
 import shutil
 import datetime
 import csv
+import argparse
 
 import numpy as np
+
+
+parser = argparse.ArgumentParser(description="Query image database.")
+parser.add_argument(
+    "db_path", 
+    type=str, 
+    help="The path to the image database file."
+)
+parser.add_argument(
+    "query", 
+    type=str, 
+    help="The query string."
+)
+parser.add_argument(
+    "--dataset_root", 
+    type=str, 
+    help="The root path of the dataset. Directory of the database file by default."
+)
+parser.add_argument(
+    "--db_out", 
+    type=str, 
+    help="Save the filtered database."
+)
+parser.add_argument(
+    "--img_list", 
+    type=str, 
+    help="Save the list of images in the filtered database."
+)
+parser.add_argument(
+    "--img_list_mode", 
+    type=str, 
+    default="relpath", 
+    choices=["relpath", "abspath", "name"],
+    help="The mode of the naming of the images in the list file."
+)
+parser.add_argument(
+    "--img_dir", 
+    type=str,
+    help="Copy the images in the filtered database to a destination directory."
+)
+parser.add_argument(
+    "--img_dir_mode", 
+    type=str, 
+    default="relpath_to_name", 
+    choices=["relpath_to_name", "name", "keep_relpaths"], 
+    help="The mode of the naming of the copied images."
+)
+
+
+def main(args):
+    dataset_root = os.path.dirname(args.db_path) if args.dataset_root is None else args.dataset_root
+    db_orig = ImageDatabase(root_path=dataset_root)
+    db_orig.load(args.db_path)
+    db_filt = db_orig.filter(args.query)
+
+    if args.db_out is not None:
+        db_filt.save(args.db_out)
+    
+    if args.img_list is not None:
+        db_filt.create_image_list_file(args.img_list, mode=args.img_list_mode)
+    
+    if args.img_dir is not None:
+        db_filt.copy_images(args.img_dir, mode=args.img_dir_mode)
 
 
 class ImageDatabase:
@@ -41,10 +129,25 @@ class ImageDatabase:
         "altitude",
     ]
 
+    filter_key_to_metadata_key = {
+        "capture_date": "capture_time",
+        "capture_year": "capture_time",
+        "capture_month": "capture_time",
+        "capture_hour": "capture_time",
+        "sensor_name": "sensor_name",
+        "tag_location": "tag_location",
+        "tag_daytime": "tag_daytime",
+        "latitude": "coords_wgs84",
+        "longitude": "coords_wgs84",
+        "altitude": "coords_wgs84",
+    }
 
-    def __init__(self, db={}, root_path=None):
+    def __init__(self, db=None, root_path=None):
         """Initialize the image database."""
 
+        if db is None:
+            db = {}
+        
         self.db = db
         self.root_path = root_path
 
@@ -58,7 +161,7 @@ class ImageDatabase:
         """
 
         return len(self.db)
-    
+
 
     def __getitem__(self, img_relpath):
         """Get the metadata of an image.
@@ -72,7 +175,7 @@ class ImageDatabase:
         """
 
         return self.db[img_relpath]
-    
+
 
     def __setitem__(self, img_relpath, img_data):
         """Set the metadata of an image. Check if the metadata fields are valid.
@@ -87,7 +190,7 @@ class ImageDatabase:
             assert key in self.metadata_fields, "Invalid metadata field: " + key
 
         self.db[img_relpath] = img_data
-    
+
 
     def __delitem__(self, img_relpath):
         """Delete an image from the database.
@@ -98,7 +201,7 @@ class ImageDatabase:
         """
 
         del self.db[img_relpath]
-    
+
 
     def __iter__(self):
         """Get an iterator for the image database.
@@ -109,7 +212,7 @@ class ImageDatabase:
         """
 
         return iter(self.db)
-    
+
 
     def __next__(self):
         """Get the next image in the database.
@@ -120,7 +223,7 @@ class ImageDatabase:
         """
 
         return next(self.db)
-    
+
 
     def __contains__(self, img_relpath):
         """Check if an image is in the database.
@@ -247,7 +350,7 @@ class ImageDatabase:
         rel_paths = list(self.db.keys())
         rel_paths.sort()
         return rel_paths
-            
+
 
     def add_image(self, image_name, data):
         """Add an image to the database.
@@ -282,70 +385,104 @@ class ImageDatabase:
             key, value = substr.strip().split(":")
             key = key.strip()
             value = value.strip()
+
+            assert key in self.filter_keys, "Invalid key in the filter string: " + key
             
-            mode = "single"
             if value.startswith("[") and value.endswith("]"):
                 mode = "range"
                 left_limit, right_limit = value[1:-1].split(",")
                 left_limit = left_limit.strip()
                 right_limit = right_limit.strip()
-                filter_values = (left_limit, right_limit)
+                filter_values = [left_limit, right_limit]
             elif value.startswith("["):
                 mode = "lrange"
                 left_limit = value[1:].strip()
-                filter_values = (left_limit)
+                filter_values = [left_limit]
             elif value.endswith("]"):
                 mode = "rrange"
                 right_limit = value[:-1].strip()
-                filter_values = (right_limit)
+                filter_values = [right_limit]
             elif "," in value:
                 mode = "list"
-                filter_values = (val.strip() for val in value.split(","))
+                filter_values = [val.strip() for val in value.split(",")]
+            else:
+                mode = "single"
+                filter_values = [value]
             
             filter_dict[key] = {"mode": mode, "values": filter_values}
 
-        filtered_db = ImageDatabase()
+        filtered_db = ImageDatabase(root_path=self.root_path)
 
         for img_name, img_data in self.db.items():
             passed = True
 
-            assert key in self.filter_keys, "Invalid key in the filter string: " + key
-
             for key, val_dict in filter_dict.items():
-                if key not in img_data:
+                metadata_key = self.filter_key_to_metadata_key[key]
+                # If the key is not in the image metadata, the image does not 
+                # pass the filter
+                if metadata_key not in img_data:
+                    print("WARN: Key \"{}\" not in image {} metadata".format(key, img_name))
                     passed = False
+                    break
                 
                 filter_mode = val_dict["mode"]
                 filter_values = val_dict["values"]
 
                 if key == "capture_date":
-                    image_value = img_data[key].strftime("%Y-%m-%d")
+                    image_value = img_data[metadata_key].strftime("%Y-%m-%d")
+                    filter_values = [datetime.datetime.strptime(val, "%Y-%m-%d") for val in filter_values]
 
                 elif key == "capture_year":
-                    image_value = int(img_data[key].strftime("%Y"))
+                    image_value = int(img_data[metadata_key].strftime("%Y"))
+                    filter_values = [int(val) for val in filter_values]
                 
                 elif key == "capture_month":
-                    image_value = int(img_data[key].strftime("%m"))
+                    image_value = int(img_data[metadata_key].strftime("%m"))
+                    filter_values = [int(val) for val in filter_values]
 
                 elif key == "capture_hour":
-                    image_value = int(img_data[key].strftime("%H"))
+                    image_value = int(img_data[metadata_key].strftime("%H"))
+                    filter_values = [int(val) for val in filter_values]
 
                 elif key in ["sensor_name"]:
-                    image_value = img_data[key]
+                    image_value = img_data[metadata_key]
                     
                 elif key in ["tag_location", "tag_daytime"]:
-                    image_value = img_data[key]
+                    image_value = img_data[metadata_key]
                 
                 elif key == "latitude":
-                    image_value = img_data["coords_wgs84"][0,0]
+                    image_value = img_data[metadata_key][0,0]
+
+                    for val in filter_values:
+                        if val.lower().endswith("n"):
+                            val = float(val[:-1])
+                        elif val.lower().endswith("s"):
+                            val = -float(val[:-1])
+                        else:
+                            val = float(val)
+
+                    filter_values = [float(val) for val in filter_values]
 
                 elif key == "longitude":
-                    image_value = img_data["coords_wgs84"][1,0]
+                    image_value = img_data[metadata_key][1,0]
+
+                    for val in filter_values:
+                        if val.lower().endswith("e"):
+                            val = float(val[:-1])
+                        elif val.lower().endswith("w"):
+                            val = -float(val[:-1])
+                        else:
+                            val = float(val)
+
+                    filter_values = [float(val) for val in filter_values]
 
                 elif key == "altitude":
-                    image_value = img_data["coords_wgs84"][2,0]
+                    image_value = img_data[metadata_key][2,0]
+                    filter_values = [float(val) for val in filter_values]
                 
-                passed = passed and compare_metadata(image_value, filter_values, filter_mode)
+                cyclic_value = key in ["capture_hour", "capture_month", "capture_year", "longitude"]
+
+                passed = passed and compare_metadata(image_value, filter_values, filter_mode, cyclic=cyclic_value)
 
                 if not passed:
                     break
@@ -354,8 +491,8 @@ class ImageDatabase:
                 filtered_db.add_image(img_name, img_data)
 
         return filtered_db
-    
-    
+
+
     def create_image_list_file(self, image_list_path, mode="relpath"):
         """Create a file containing the list of images in the database.
 
@@ -379,15 +516,17 @@ class ImageDatabase:
                     f.write(os.path.basename(img_relpath) + "\n")
                 else:
                     assert False, "Invalid mode: " + mode
-    
+
 
     def copy_images(self, dest_dir, mode="relpath_to_name"):
         """Copy the images in the database to a destination directory.
 
         Parameters:
         dest_dir (str): The path to the destination directory.
-        mode (str): The mode of the image list file. Can be "relpath_to_name", 
-        "name", or "keep_relpaths".
+        mode (str): The mode of the image list file. Can be "relpath_to_name" 
+        (all images into single directory and rename them with their original 
+        relative paths), "name" (all images into single directory and keep 
+        names), or "keep_relpaths" (keep the original directory structure).
 
         """
 
@@ -397,7 +536,7 @@ class ImageDatabase:
         for img_relpath in self.db:
             img_name = os.path.basename(img_relpath)
             if mode == "relpath_to_name":
-                img_name = "_".join(img_relpath.split(os.sep)) + img_name
+                img_name = "_".join(img_relpath.split(os.sep))
                 img_dest_path = os.path.join(dest_dir, img_name)
             elif mode == "name":
                 img_dest_path = os.path.join(dest_dir, img_name)
@@ -476,3 +615,8 @@ def compare_range_cyclic(value, left_limit = -float("inf"), right_limit = float(
         return left_limit <= value <= right_limit
     else:
         return left_limit <= value or value <= right_limit
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    main(args)
