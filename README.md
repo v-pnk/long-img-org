@@ -76,6 +76,7 @@ python3 process.py --help
 
 - The locations of images are extracted from the EXIF metadata (if available) or interpolated using a GPX track file.
 - Video files cannot directly contain a location in their metadata, so the locations for the extracted frames are interpolated from a GPX track file and saved in the frame EXIF.
+- The tool matches the images to the GPX track file solely by the time of capture. Therefore it cannot handle the case when multiple GPX files corresponding to different sensors capturing at the same time are being processed at once. This case can be solved by processing the corresponding image data and GPX files sequentially (first process the images and GPX files from sensor A, then process the images and GPX files from sensor B, etc.).
 
 ## TODO
 - [x] image resizing
