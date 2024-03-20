@@ -15,8 +15,7 @@ import numpy as np
 from tqdm import tqdm
 
 import torch
-from torch import nn, hub
-import torchvision
+from torch import nn
 from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
 from torchvision.transforms import v2
 from torchvision.io import read_image
@@ -30,13 +29,24 @@ parser.add_argument("--img_dir_train", type=str, help="Path to the directory wit
 parser.add_argument("--img_dir_val", type=str, help="Path to the directory with evaluation images")
 parser.add_argument("--train_labels", type=str, help="Path to the text file with training labels")
 parser.add_argument("--val_labels", type=str, help="Path to the text file with evaluation labels")
+parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training")
+parser.add_argument("--num_epochs", type=int, default=100, help="Number of epochs for training")
+parser.add_argument("--sgd_lr_start", type=float, default=1e-1, help="Learning rate for training (the initial value)")
+parser.add_argument("--sgd_lr_end", type=float, default=1e-4, help="Learning rate for training (the final value)")
+parser.add_argument("--sgd_momentum", type=float, default=0.9, help="Momentum for training")
 
 
 img_exts = (".png", ".PNG", ".jpg", ".JPG", ".jpeg", ".JPEG")
 
 
 def main(args):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        print("Training on GPU")
+        device = torch.device("cuda:0")
+        torch.backends.cudnn.benchmark = True
+    else:
+        print("Training on CPU")
+        device = torch.device("cpu")
     
     wandb.login()
     run = wandb.init(project="image_tagger", dir="/home/m/Desktop/wandb/")
@@ -47,10 +57,11 @@ def main(args):
 
     data_transforms = {
         'train': v2.Compose([
-            v2.RandomResizedCrop(img_prep.crop_size),
+            v2.RandomRotation(degrees=30, fill=img_prep.mean),
+            v2.RandomResizedCrop(size=img_prep.crop_size, scale=(0.36, 1.0), ratio=(0.9, 1.1)),
             v2.RandomHorizontalFlip(),
+            v2.ColorJitter(brightness=0.5, contrast=0.3, saturation=0.3, hue=0.1),
             v2.Normalize(img_prep.mean, img_prep.std),
-            v2.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.0),
         ]),
         'val': img_prep
     }
@@ -58,10 +69,10 @@ def main(args):
     image_datasets = {"train": TagDataset(args.img_dir_train, args.train_labels, data_transforms["train"]),
                       "val": TagDataset(args.img_dir_val, args.val_labels, data_transforms["val"])}
 
-    dataloaders = {"train": torch.utils.data.DataLoader(image_datasets["train"], batch_size=4,
-                                                shuffle=True, num_workers=4),
-                   "val": torch.utils.data.DataLoader(image_datasets["val"], batch_size=4,
-                                                shuffle=True, num_workers=4)}
+    dataloaders = {"train": torch.utils.data.DataLoader(image_datasets["train"], batch_size=args.batch_size,
+                                                shuffle=True, num_workers=6, pin_memory=True),
+                   "val": torch.utils.data.DataLoader(image_datasets["val"], batch_size=args.batch_size,
+                                                shuffle=True, num_workers=6, pin_memory=True)}
     
     dataset_sizes = {"train": len(image_datasets["train"]), 
                      "val": len(image_datasets["val"])}
@@ -73,28 +84,26 @@ def main(args):
     for param in net.parameters():
         param.requires_grad = False
 
-    # Replace the classifier - new layers are not freezed
     net.classifier = nn.Sequential(
             nn.Dropout(p=0.2, inplace=True),
-            nn.Linear(in_features=1280, out_features=cls_num, bias=True),
+            nn.Linear(in_features=1280, out_features=320, bias=True),
+            nn.LeakyReLU(),
+            nn.Dropout(p=0.2, inplace=True),
+            nn.Linear(in_features=320, out_features=cls_num, bias=True),
+            # nn.Sigmoid() # The last sigmoid is within the BCEWithLogitsLoss --> apply manually for inference
         )
 
     net = net.to(device)
 
-    
-
-    criterion = nn.BCEWithLogitsLoss(reduction="sum")
-    optimizer = torch.optim.SGD(net.classifier.parameters(), lr=1e-3, momentum=0.9)
-    # Decay LR by a factor of 0.1 every 10 epochs
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
-
-    num_epochs = 100
+    criterion = nn.BCEWithLogitsLoss(reduction="mean")
+    optimizer = torch.optim.SGD(net.classifier.parameters(), lr=args.sgd_lr_start, momentum=args.sgd_momentum)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=(args.sgd_lr_end / args.sgd_lr_start) ** (1 / args.num_epochs))
 
     wandb.watch(net, log_freq=10)
-    net = train_model(net, dataloaders, dataset_sizes, criterion, optimizer, scheduler, num_epochs, device)
+    net = train_model(net, dataloaders, dataset_sizes, criterion, optimizer, scheduler, args.num_epochs, cls_num, device)
 
 
-def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, scheduler, num_epochs=25, device="cpu"):
+def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, scheduler, num_epochs=100, cls_num, device="cpu"):
     # Create a temporary directory to save training checkpoints
     with TemporaryDirectory() as tempdir:
         best_model_params_path = os.path.join(tempdir, 'best_model_params.pt')
@@ -113,7 +122,7 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
                 running_loss = 0.0
                 running_corrects = 0
 
-                # Iterate over epochs
+                # Iterate over batches
                 for inputs, labels in dataloaders[phase]:
                     inputs = inputs.to(device)
                     labels = labels.to(device)
@@ -121,15 +130,16 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
                     # zero the parameter gradients
                     optimizer.zero_grad()
 
-                    # forward
-                    # track history if only in train
                     with torch.set_grad_enabled(phase == 'train'):
+                        # forward
                         outputs = model(inputs)
                         loss = criterion(outputs, labels)
+                        # the last sigmoid is within the BCEWithLogitsLoss --> apply the sigmoid manually for inference
+                        probs = torch.sigmoid(outputs)
 
                         # get one-hot binary predictions
                         prob_threshold = 0.5
-                        preds = (outputs > prob_threshold).float()
+                        preds = (probs > prob_threshold).float()
 
                         # backward + optimize only if in training phase
                         if phase == 'train':
@@ -139,11 +149,12 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer, schedul
                     # statistics
                     running_loss += loss.item() * inputs.size(0)
                     running_corrects += torch.sum(preds == labels.data)
+                
                 if phase == 'train':
                     scheduler.step()
 
                 epoch_loss = running_loss / dataset_sizes[phase]
-                epoch_acc = running_corrects.double() / dataset_sizes[phase]
+                epoch_acc = running_corrects.double() / dataset_sizes[phase] / cls_num
 
                 # deep copy the model
                 if phase == 'val' and epoch_acc > best_acc:
@@ -222,6 +233,7 @@ class TagDataset(torch.utils.data.Dataset):
                 
                 if not label_names:
                     label_names = [l.strip() for l in line.split()]
+                    onehot_sum = [0] * len(label_names)
                 
                 else:
                     words = [l.strip() for l in line.split()]
@@ -235,12 +247,10 @@ class TagDataset(torch.utils.data.Dataset):
                     onehot_labels = [0] * len(label_names)
                     for label in labels:
                         onehot_labels[label_names.index(label)] = 1
+                        onehot_sum[label_names.index(label)] += 1
                     img_labels[img_name] = onehot_labels
-
-                    # label_idxs = []
-                    # for label in labels:
-                        # label_idxs.append(label_names.index(label))
-                    # img_labels[img_name] = label_idxs
+        
+        print(onehot_sum)
 
         self.classes = label_names
         self.img_labels = img_labels
