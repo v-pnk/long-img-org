@@ -31,6 +31,7 @@ import os
 import shutil
 import datetime
 import csv
+import hashlib
 import argparse
 
 import numpy as np
@@ -50,7 +51,7 @@ parser.add_argument(
 parser.add_argument(
     "--dataset_root", 
     type=str, 
-    help="The root path of the dataset. Directory of the database file by default."
+    help="The root path of the input dataset. Using the directory of input database file by default."
 )
 parser.add_argument(
     "--db_out", 
@@ -113,6 +114,7 @@ class ImageDatabase:
         "orig_width",
         "orig_height"
         "orig_relpath",
+        "md5",
     ]
 
     # Valid filter keys
@@ -247,7 +249,7 @@ class ImageDatabase:
 
         """
 
-        assert os.path.exists(image_database_path), "The given image database file does not exist: " + image_database_path
+        assert os.path.isfile(image_database_path), "The given image database file does not exist: " + image_database_path
 
         with open(image_database_path, 'rt', newline='') as f:
             csv_reader = csv.reader(f)
@@ -267,6 +269,7 @@ class ImageDatabase:
                     coords_wgs84 = np.array([latitude, longitude, altitude]).reshape(3, 1)
                 orig_width = int(row[11])
                 orig_height = int(row[12])
+                md5 = row[13]
 
                 img_relpath = os.path.join(date.strftime("%Y-%m-%d"), 
                                            sensor_name, img_name)
@@ -279,7 +282,8 @@ class ImageDatabase:
                     "tag_daytime": tag_daytime,
                     "coords_wgs84": coords_wgs84,
                     "orig_width": orig_width,
-                    "orig_height": orig_height
+                    "orig_height": orig_height,
+                    "md5": md5,
                 }
 
 
@@ -291,7 +295,7 @@ class ImageDatabase:
 
         """
 
-        if os.path.exists(image_database_path):
+        if os.path.isfile(image_database_path):
             file_mode = "at"
         else:
             file_mode = "wt"
@@ -322,6 +326,7 @@ class ImageDatabase:
                     altitude = "{:.4f}".format(img_data["coords_wgs84"][2,0])
                 orig_width = img_data["orig_width"]
                 orig_height = img_data["orig_height"]
+                md5 = img_data["md5"]
 
                 row_data = [img_name, 
                             date, 
@@ -335,7 +340,9 @@ class ImageDatabase:
                             longitude, 
                             altitude, 
                             orig_width, 
-                            orig_height]
+                            orig_height,
+                            md5,
+                ]
                 csv_writer.writerow(row_data)
 
 
@@ -531,7 +538,7 @@ class ImageDatabase:
         """
 
         assert self.root_path is not None, "The dataset root path is not set."
-        assert os.path.exists(dest_dir), "The given destination directory does not exist: " + dest_dir
+        assert os.path.isdir(dest_dir), "The given destination directory does not exist: " + dest_dir
 
         for img_relpath in self.db:
             img_name = os.path.basename(img_relpath)
@@ -547,10 +554,24 @@ class ImageDatabase:
 
             img_src_path = os.path.join(self.root_path, img_relpath)
 
-            if not os.path.exists(os.path.dirname(img_dest_path)):
+            if not os.path.isdir(os.path.dirname(img_dest_path)):
                 os.makedirs(os.path.dirname(img_dest_path))
+            
+            if not os.path.isfile(img_src_path):
+                print("WARN: Source image not found: " + img_src_path)
+                continue
+
+            md5_db = self.db[img_relpath]["md5"]
+            md5_src = hashlib.md5(open(img_src_path, 'rb').read()).hexdigest()
 
             shutil.copy2(img_src_path, img_dest_path)
+
+            md5_dest = hashlib.md5(open(img_dest_path, 'rb').read()).hexdigest()
+            
+            if md5_db != md5_src:
+                print("WARN: MD5 hash of the source image does not match the one in the database - check integrity of the file: " + img_src_path)
+            elif md5_db != md5_dest:
+                print("WARN: MD5 hash of the copied image does not match the one in the database (the source seems OK) - check integrity of the copied file: " + img_dest_path)
 
 
 def compare_metadata(image_value, filter_values, filter_mode, cyclic=False):

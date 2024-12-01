@@ -9,6 +9,7 @@ import cv2
 import exiftool
 import os
 import datetime
+import hashlib
 
 import gpx
 import utils
@@ -124,6 +125,9 @@ def process_video(video_path, frame_dir, frame_rate, gpx_file=None, gpx_mode="ne
             image_path = os.path.join(frame_dir, image_name + ".jpg")
             cv2.imwrite(image_path, frame["image"])
             del frame["image"]
+            
+            md5 = hashlib.md5(open(image_path, 'rb').read()).hexdigest()
+            frame["md5"] = md5
 
             exif_tags = {
                     "XResolution": metadata["x_resolution"],

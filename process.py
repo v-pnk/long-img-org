@@ -19,6 +19,7 @@ The processing and organization includes:
 
 import os
 import shutil
+import hashlib
 
 import argparse
 import numpy as np
@@ -165,11 +166,13 @@ def main(args):
     image_data = {}
     with exiftool.ExifToolHelper() as et:
         for image_path in image_paths:
+            md5 = hashlib.md5(open(image_path, 'rb').read()).hexdigest()
             exif_tags = et.get_metadata(image_path)[0]
             image_name = os.path.basename(image_path)
 
             image_data[image_name] = {}
             image_data[image_name]["orig_path"] = image_path
+            image_data[image_name]["md5"] = md5
             image_data[image_name]["exif_tags"] = exif_tags
 
             # Get the sensor name

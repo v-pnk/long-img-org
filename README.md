@@ -63,6 +63,7 @@ python3 process.py --help
     - the `<sensor_directories>` are named by the sensor name constructed from the EXIF metadata
     - the `metadata.yaml` file contains the definition of sequences and tags for the given day and sensor
     - the `sensors.yaml` file contains the definition of all the sensors used in the dataset
+    - the `image_database.csv` file contains information about all the images in the dataset used for quick retrieval
 
 ```
 <dataset_root>
@@ -72,6 +73,7 @@ python3 process.py --help
 │   │   ├── <video_files>
 │   │   ├── metadata.yaml
 ├── sensors.yaml
+├── image_database.csv
 ```
 
 - The locations of images are extracted from the EXIF metadata (if available) or interpolated using a GPX track file.
@@ -82,4 +84,5 @@ python3 process.py --help
 - [x] image resizing
 - [x] global image database
 - [x] image retrieval (based on locations, tags, sequences, etc.)
+- [x] image integrity checks based on MD5 hash
 - [ ] automatic image-based tagging (weather, foliage, etc.)
