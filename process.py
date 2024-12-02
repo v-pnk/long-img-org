@@ -183,9 +183,9 @@ def main(args):
                 sensor_list[sensor_name] = sensor_info
                 print("- add new sensor {} to the sensor list".format(sensor_name))
             image_data[image_name]["sensor_name"] = sensor_name
-
-            image_data[image_name]["orig_width"] = exif_tags["EXIF:ImageWidth"]
-            image_data[image_name]["orig_height"] = exif_tags["EXIF:ImageHeight"]
+            
+            image_data[image_name]["orig_width"] = exif_tags["EXIF:ExifImageWidth"]
+            image_data[image_name]["orig_height"] = exif_tags["EXIF:ExifImageHeight"]
 
             # Get the capture time
             image_data[image_name]["capture_time"] = exif.exif_to_time(exif_tags)

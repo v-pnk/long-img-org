@@ -26,8 +26,8 @@ def exif_to_sensor_info(exif_tags: dict, ratio: float):
 
     device = exif_tags["EXIF:Model"]
     focal_length = exif_tags["EXIF:FocalLength"]
-    image_width = round(exif_tags["EXIF:ImageWidth"] * ratio)
-    image_height = round(exif_tags["EXIF:ImageHeight"] * ratio)
+    image_width = round(exif_tags["EXIF:ExifImageWidth"] * ratio)
+    image_height = round(exif_tags["EXIF:ExifImageHeight"] * ratio)
     data_type = "RGB"
 
     sensor_name = "{}_{}mm_{}x{}_{}".format(
