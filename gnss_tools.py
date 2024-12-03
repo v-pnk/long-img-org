@@ -28,21 +28,19 @@ def prep_coords_wgs84(coords_wgs84):
 
     Returns:
     coords_wgs84_prep (np.ndarray): A numpy array containing the preprocessed
-    WGS-84 coordinates with shape (3, N).
+    WGS-84 coordinates with shape (3, N), with angles in radians.
     """
 
     if coords_wgs84 is None:
         return None
 
     # convert latitude and longitude to radians
-    coords_wgs84_prep = np.empty(coords_wgs84.shape)
+    coords_wgs84_prep = np.zeros((3, coords_wgs84.shape[1]))
     coords_wgs84_prep[0, :] = np.radians(coords_wgs84[0, :])
     coords_wgs84_prep[1, :] = np.radians(coords_wgs84[1, :])
 
-    if coords_wgs84_prep.shape[0] == 2:
-        coords_wgs84_prep = np.vstack(
-            (coords_wgs84_prep, np.zeros(coords_wgs84_prep.shape[1]))
-        )
+    if coords_wgs84.shape[0] == 3:
+        coords_wgs84_prep[2, :] = coords_wgs84[2, :]
 
     return coords_wgs84_prep
 

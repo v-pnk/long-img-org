@@ -183,7 +183,7 @@ def main(args):
                 sensor_list[sensor_name] = sensor_info
                 print("- add new sensor {} to the sensor list".format(sensor_name))
             image_data[image_name]["sensor_name"] = sensor_name
-            
+
             image_data[image_name]["orig_width"] = exif_tags["EXIF:ExifImageWidth"]
             image_data[image_name]["orig_height"] = exif_tags["EXIF:ExifImageHeight"]
 
@@ -297,7 +297,7 @@ def main(args):
 
     # Assign tags to images
     print("- assign tags to images")
-    if args.geojson_file:
+    if args.geojson_file is not None:
         print("  - load given GeoJSON file: {}".format(args.geojson_file))
         LT = locations.LocationTagger(args.geojson_file)
     for image_relpath in image_data:
@@ -312,15 +312,13 @@ def main(args):
             image_data[image_relpath]["tag_daytime"] = "unknown"
         
         # Tag the images with location tag
-        if image_data[image_relpath]["coords_wgs84"] is not None:
-            if args.geojson_file:
-                # There might be multiple locations per image if multiple location
-                # polygons in the GeoJSON file intersect
-                image_data[image_relpath]["tag_location"] = LT.tag_points(
-                    image_data[image_relpath]["coords_wgs84"]
-                )[0]
-            else:
-                image_data[image_relpath]["tag_location"] = ["unknown"]
+        if image_data[image_relpath]["coords_wgs84"] is not None and args.geojson_file is not None:
+            # There might be multiple locations per image at the places where 
+            # multiple location polygons in the GeoJSON file intersect
+            image_data[image_relpath]["tag_location"] = LT.tag_points(
+                image_data[image_relpath]["coords_wgs84"]
+            )[0]
+
         else:
             image_data[image_relpath]["tag_location"] = ["unknown"]
         

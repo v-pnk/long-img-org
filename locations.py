@@ -63,6 +63,11 @@ class LocationTagger:
                 gnss_tools.prep_coords_wgs84(locations_center),
             )
             polygon_shapely = shapely.Polygon(polygon_enu.T)
+
+            if not polygon_shapely.is_valid:
+                print("WARN: Invalid polygon \"{}\" in the given GeoJSON file".format(name))
+            
+            shapely.prepare(polygon_shapely) # speeds up the contains method
             locations[name] = polygon_shapely
 
         self.locations_polygons = locations
@@ -86,14 +91,16 @@ class LocationTagger:
         )
 
         # Tag the points
-        tags = []
+        all_tags = []
+        debug_pnt_list = [] ###
         for point_enu in points_enu.T:
-            tags.append(
-                [
-                    name
-                    for name, polygon in self.locations_polygons.items()
-                    if polygon.contains(shapely.geometry.Point(point_enu))
-                ]
-            )
+            pnt_tags = []
+            pnt = shapely.geometry.Point(point_enu)
+            debug_pnt_list.append(pnt) ###
+            for name, polygon in self.locations_polygons.items():
+                if shapely.contains(polygon, pnt):
+                    pnt_tags.append(name)
 
-        return tags
+            all_tags.append(pnt_tags)
+
+        return all_tags
