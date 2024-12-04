@@ -25,6 +25,7 @@ import argparse
 import numpy as np
 import exiftool
 import yaml
+from rich.progress import track
 
 import gnss_tools
 import exif
@@ -126,6 +127,9 @@ video_exts = (".mp4")
 
 
 def main(args):
+    progress = utils.rich_progress_bar()
+    progress.start()
+
     # Load the sensor list
     if not args.sensor_file:
         args.sensor_file = os.path.join(args.dataset, "sensors.yaml")
@@ -164,8 +168,11 @@ def main(args):
 
     # Extract the EXIF data
     image_data = {}
+    print("- extract EXIF metadata from the images")
     with exiftool.ExifToolHelper() as et:
+        task = progress.add_task("  ", total=len(image_paths))
         for image_path in image_paths:
+            progress.update(task, advance=1)
             md5 = hashlib.md5(open(image_path, 'rb').read()).hexdigest()
             exif_tags = et.get_metadata(image_path)[0]
             image_name = os.path.basename(image_path)
@@ -181,7 +188,7 @@ def main(args):
             )
             if sensor_name not in sensor_list:
                 sensor_list[sensor_name] = sensor_info
-                print("- add new sensor {} to the sensor list".format(sensor_name))
+                print("  - add new sensor {} to the sensor list".format(sensor_name))
             image_data[image_name]["sensor_name"] = sensor_name
 
             image_data[image_name]["orig_width"] = exif_tags["EXIF:ExifImageWidth"]
@@ -202,7 +209,9 @@ def main(args):
     # Organize the images by date and sensor
     print("- organize the images by date and sensor")
     image_data_org = {}
+    task = progress.add_task("  ", total=len(image_data))
     for image_name in image_data:
+        progress.update(task, advance=1)
         date_dir = os.path.join(
             args.dataset, image_data[image_name]["capture_time"].strftime("%Y-%m-%d")
         )
@@ -275,7 +284,10 @@ def main(args):
                     )
 
     # Load the videos and extract the frames
+    print("- process videos")
+    task = progress.add_task("  ", total=len(video_paths))
     for video_path in video_paths:
+        progress.update(task, advance=1)
         video_metadata = video.get_metadata(video_path)
 
         date_dir = os.path.join(
@@ -300,7 +312,10 @@ def main(args):
     if args.geojson_file is not None:
         print("  - load given GeoJSON file: {}".format(args.geojson_file))
         LT = locations.LocationTagger(args.geojson_file)
+    
+    task = progress.add_task("  ", total=len(image_data))
     for image_relpath in image_data:
+        progress.update(task, advance=1)
         # Tag the images with day-time tag
         if image_data[image_relpath]["coords_wgs84"] is not None:
             image_data[image_relpath]["tag_daytime"] = daytime.get_daytime_tag(
@@ -499,6 +514,7 @@ def main(args):
     else:
         new_image_database.save(args.image_database_file)
 
+    progress.stop()
 
 if __name__ == "__main__":
     args = parser.parse_args()

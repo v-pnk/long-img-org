@@ -206,3 +206,40 @@ def copy_resize_image(source_path, target_path, ratio):
         new_tags["EXIF:ExifImageHeight"] = new_tags["EXIF:ImageHeight"]
         
         et.set_tags(target_path, new_tags, params=["-overwrite_original"])
+
+
+def rich_progress_bar():
+    """Create a custom rich progress bar with "k/n" instead of percentage.
+
+    Returns:
+    progress (rich.progress.Progress): The progress bar.
+
+    """
+
+    from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
+    from rich.style import Style
+
+    blue_style = Style(color="#0065BD")
+    grey_style = Style(color="#808080")
+    white_style = Style(color="#FFFFFF")
+
+    progress = Progress(
+        TextColumn(
+            "  ", 
+            style=white_style,
+        ),
+        BarColumn(
+            bar_width=60, 
+            style=grey_style, 
+            complete_style=blue_style,
+            finished_style=white_style,
+            pulse_style=white_style,
+        ),
+        TextColumn(
+            "{task.completed}/{task.total}", 
+            style=white_style,
+        ),
+        transient=True,
+    )
+
+    return progress
