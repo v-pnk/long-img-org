@@ -41,6 +41,7 @@ sudo dnf install perl-Image-ExifTool
 ```
 
 ## Usage
+### New data processing
 
 The tool works best if run on original images containing full EXIF from a camera or a smartphone. The processing can be done gradually in batches, building the dataset over time.
 
@@ -55,6 +56,41 @@ For all the available options, use the `--help` flag:
 ```bash
 python3 process.py --help
 ```
+
+### Retrieval
+
+You can retrieve subsets of your dataset based on the image metadata stored in the database and save it as a new CSV database, copy the images or create a list of image names / paths:
+
+```bash
+python3 img_db.py <path_to_input_image_database.csv> "<list_of_filters>" --db_out <path_to_output_image_database.csv> --img_list <path_to_output_img_list.txt> --img_dir <path_to_output_img_dir>
+```
+
+The `<list_of_filters>` is a list of key-value pairs separated by semicolons. Possible keys are:
+- `capture_date`
+- `capture_year`
+- `capture_month`
+- `capture_hour`
+- `sensor_name`
+- `tag_location`
+- `tag_daytime`
+- `latitude`
+- `longitude`
+- `altitude`
+
+The values can be defined as a single value (`capture_month: 11`), as a range (`capture_month: [11,2]`), as a maximum / minimum value (`capture_year: 2023]` / `capture_year: [2022`) or as a list (`capture_month: 3,4,5`). A more complex example to retrieve images captured between December and February, during dawn or dusk, and located in the `main_square` location:
+
+```
+"capture_month: [12,2]; tag_daytime: dawn,dusk; tag_location: main_square"
+```
+
+The script also supports creating random or uniformly sampled subsets of the dataset:
+
+```bash 
+python3 img_db.py ... --subset_size <number_of_images_to_samlpe> --subset_mode <random|uniform>
+```
+
+
+
 
 ## Notes
 - The named locations (used for location tagging) are defined by polygons in a GeoJSON file. The map with polygons can be created, e.g., using [uMap](https://umap.openstreetmap.fr/en/).
@@ -76,7 +112,7 @@ python3 process.py --help
 ├── image_database.csv
 ```
 
-- The locations of images are extracted from the EXIF metadata (if available) or interpolated using a GPX track file.
+- The coordinates of images are extracted from the EXIF metadata (if available) or interpolated using a GPX track file.
 - Video files cannot directly contain a location in their metadata, so the locations for the extracted frames are interpolated from a GPX track file and saved in the frame EXIF.
 - The tool matches the images to the GPX track file solely by the time of capture. Therefore it cannot handle the case when multiple GPX files corresponding to different sensors capturing at the same time are being processed at once. This case can be solved by processing the corresponding image data and GPX files sequentially (first process the images and GPX files from sensor A, then process the images and GPX files from sensor B, etc.).
 
