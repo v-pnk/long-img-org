@@ -205,6 +205,7 @@ def main(args):
 
             # Get the GNSS coordinates
             image_data[image_name]["coords_wgs84"] = exif.exif_to_WGS84(exif_tags)
+        progress.remove_task(task)
 
     # Organize the images by date and sensor
     print("- organize the images by date and sensor")
@@ -239,6 +240,7 @@ def main(args):
 
 
         image_data_org[new_image_relpath] = image_data[image_name]
+    progress.remove_task(task)
 
     image_data = image_data_org
 
@@ -306,6 +308,7 @@ def main(args):
         )
 
         image_data.update(frame_data)
+    progress.remove_task(task)
 
     # Assign tags to images
     print("- assign tags to images")
@@ -338,10 +341,14 @@ def main(args):
             image_data[image_relpath]["tag_location"] = ["unknown"]
         
         # TODO: Tag the iamges with other image-based tags
+    progress.remove_task(task)
 
     # Define the metadata for each sensor directory
     print("- define the metadata for each sensor subdirectory")
-    for date_dir in os.listdir(args.dataset):
+    date_dir_list = os.listdir(args.dataset)
+    task = progress.add_task("  ", total=len(date_dir_list))
+    for date_dir in date_dir_list:
+        progress.update(task, advance=1)
         if not os.path.isdir(os.path.join(args.dataset, date_dir)):
             continue
         for sensor_dir in os.listdir(os.path.join(args.dataset, date_dir)):
@@ -498,6 +505,7 @@ def main(args):
 
             print("  - write metadata file: {}".format(os.path.relpath(metadata_file, args.dataset)))
             utils.save_metadata(metadata_file, metadata)
+    progress.remove_task(task)
 
     # Save the sensor list
     if args.new_sensor_file:
