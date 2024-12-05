@@ -49,6 +49,11 @@ parser.add_argument(
     help="The dataset directory.",
 )
 parser.add_argument(
+    "--input_image_list",
+    type=str,
+    help="A text file with the list of images to process.",
+)
+parser.add_argument(
     "--geojson_file", 
     type=str, 
     help="The geojson file with the location tags.",
@@ -153,11 +158,21 @@ def main(args):
         
     image_database_relpaths = old_image_database.get_relpaths()
 
+    input_image_list = []
+    if args.input_image_list is not None:
+        with open(args.input_image_list, "rt") as f:
+            input_image_list = f.readlines()
+        input_image_list = [file_name.strip() for file_name in input_image_list]
+        input_image_list.sort()
+
     # Get the list of image and video paths
     image_paths = []
     video_paths = []
     for root, dirs, files in os.walk(args.images):
         for file in files:
+            if len(input_image_list) > 0 and file not in input_image_list:
+                continue
+            
             if file.endswith(img_exts):
                 image_paths.append(os.path.join(root, file))
             elif file.endswith(video_exts):
